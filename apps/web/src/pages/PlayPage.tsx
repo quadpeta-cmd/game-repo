@@ -45,7 +45,7 @@ export function PlayPage() {
       </div>
       <iframe
         title={manifest.name}
-        src={`/games/${gameId}/${manifest.entry}`}
+        src={`/games/${manifest.id}/${manifest.entry}`}
         sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         className="game-frame"

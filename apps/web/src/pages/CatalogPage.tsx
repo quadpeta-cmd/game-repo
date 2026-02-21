@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { gameIds, loadManifest, type GameManifest } from '../lib/games';
+import { loadCatalog, type GameManifest } from '../lib/games';
 
 export function CatalogPage() {
   const [games, setGames] = useState<GameManifest[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all(gameIds.map((id) => loadManifest(id)))
+    loadCatalog()
       .then((result) => setGames(result))
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Unknown catalog error')
