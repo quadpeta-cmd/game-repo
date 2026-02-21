@@ -3,6 +3,9 @@ export type GameManifest = {
   name: string;
   description: string;
   entry: string;
+  permissions?: {
+    storage?: boolean;
+  };
 };
 
 export async function loadGameIds(): Promise<string[]> {
