@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Pong</title>
+    <style>
+      body { margin: 0; background: #020617; color: #e2e8f0; font-family: system-ui, sans-serif; }
+      canvas { display: block; margin: 0 auto; background: #0f172a; }
+      p { text-align: center; }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" width="640" height="360"></canvas>
+    <p>Move mouse to control paddle.</p>
+    <script>
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const paddle = { x: 20, y: 140, w: 12, h: 80 };
+      const ball = { x: 320, y: 180, vx: 4, vy: 3, r: 8 };
+      let score = 0;
+
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        paddle.y = e.clientY - rect.top - paddle.h / 2;
+        paddle.y = Math.max(0, Math.min(canvas.height - paddle.h, paddle.y));
+      });
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(`Score: ${score}`, 20, 20);
+      }
+
+      function update() {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+
+        if (ball.y - ball.r < 0 || ball.y + ball.r > canvas.height) ball.vy *= -1;
+        if (ball.x + ball.r > canvas.width) ball.vx *= -1;
+
+        const hitPaddle =
+          ball.x - ball.r < paddle.x + paddle.w &&
+          ball.y > paddle.y &&
+          ball.y < paddle.y + paddle.h;
+
+        if (hitPaddle && ball.vx < 0) {
+          ball.vx *= -1;
+          score += 1;
+        }
+
+        if (ball.x < 0) {
+          ball.x = canvas.width / 2;
+          ball.y = canvas.height / 2;
+          ball.vx = 4;
+          ball.vy = 3;
+          score = 0;
+        }
+      }
+
+      function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      loop();
+    </script>
+  </body>
+</html>

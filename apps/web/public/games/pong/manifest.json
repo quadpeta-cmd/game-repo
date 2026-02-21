@@ -1,0 +1,6 @@
+{
+  "id": "pong",
+  "name": "Mini Pong",
+  "description": "Bounce the ball and keep it in play with your paddle.",
+  "entry": "index.html"
+}
