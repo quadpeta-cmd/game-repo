@@ -1,0 +1,65 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  color: #f0f4f8;
+  background-color: #0f172a;
+}
+
+body {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 1rem;
+}
+
+header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+a {
+  color: #93c5fd;
+}
+
+.game-list {
+  display: grid;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.game-list li {
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.play-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.play-page-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.game-frame {
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  height: 600px;
+  width: 100%;
+}
+
+.error {
+  color: #fca5a5;
+}

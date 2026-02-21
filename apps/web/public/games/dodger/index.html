@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Block Dodger</title>
+    <style>
+      body { margin: 0; background: #0b1020; color: #e2e8f0; font-family: system-ui, sans-serif; }
+      canvas { display: block; margin: 0 auto; background: #111827; }
+      p { text-align: center; }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" width="640" height="360"></canvas>
+    <p>Use ← and → to dodge.</p>
+    <script>
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const player = { x: 300, y: 320, w: 40, h: 20, speed: 6 };
+      const keys = { left: false, right: false };
+      const blocks = [];
+      let frame = 0;
+      let score = 0;
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowLeft') keys.left = true;
+        if (event.key === 'ArrowRight') keys.right = true;
+      });
+      document.addEventListener('keyup', (event) => {
+        if (event.key === 'ArrowLeft') keys.left = false;
+        if (event.key === 'ArrowRight') keys.right = false;
+      });
+
+      function intersects(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+      }
+
+      function reset() {
+        blocks.length = 0;
+        score = 0;
+        frame = 0;
+        player.x = 300;
+      }
+
+      function update() {
+        frame += 1;
+        if (keys.left) player.x -= player.speed;
+        if (keys.right) player.x += player.speed;
+        player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+
+        if (frame % 25 === 0) {
+          blocks.push({ x: Math.random() * (canvas.width - 24), y: -20, w: 24, h: 24, vy: 2 + Math.random() * 2 });
+        }
+
+        for (const block of blocks) {
+          block.y += block.vy;
+          if (intersects(player, block)) {
+            reset();
+            return;
+          }
+        }
+
+        for (let i = blocks.length - 1; i >= 0; i -= 1) {
+          if (blocks[i].y > canvas.height) {
+            blocks.splice(i, 1);
+            score += 1;
+          }
+        }
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(player.x, player.y, player.w, player.h);
+
+        ctx.fillStyle = '#f87171';
+        for (const block of blocks) {
+          ctx.fillRect(block.x, block.y, block.w, block.h);
+        }
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillText(`Score: ${score}`, 16, 20);
+      }
+
+      function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      loop();
+    </script>
+  </body>
+</html>

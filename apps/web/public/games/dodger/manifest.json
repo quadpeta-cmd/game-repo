@@ -1,0 +1,6 @@
+{
+  "id": "dodger",
+  "name": "Block Dodger",
+  "description": "Dodge falling blocks with arrow keys.",
+  "entry": "index.html"
+}
