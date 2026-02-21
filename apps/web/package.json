@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predev": "node scripts/generate-games-index.mjs",
+    "prebuild": "node scripts/generate-games-index.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
