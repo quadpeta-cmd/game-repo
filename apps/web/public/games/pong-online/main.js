@@ -1,4 +1,31 @@
-const SIGNALING_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8787`;
+function resolveSignalingUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const override = params.get('signaling');
+
+  if (override) {
+    return override;
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const locationHost = window.location.host;
+
+  if (locationHost) {
+    return `${protocol}//${window.location.hostname}:8787`;
+  }
+
+  try {
+    const docUrl = new URL(document.baseURI);
+    if (docUrl.hostname) {
+      return `${protocol}//${docUrl.hostname}:8787`;
+    }
+  } catch {
+    // Fall through to localhost fallback.
+  }
+
+  return `${protocol}//localhost:8787`;
+}
+
+const SIGNALING_URL = resolveSignalingUrl();
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 const canvas = document.getElementById('game');
@@ -137,7 +164,14 @@ function ensureSocket() {
     return;
   }
 
-  socket = new WebSocket(SIGNALING_URL);
+  try {
+    socket = new WebSocket(SIGNALING_URL);
+  } catch (error) {
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `Invalid signaling URL: ${SIGNALING_URL}` : 'Invalid signaling URL.');
+    socket = null;
+    return;
+  }
 
   socket.addEventListener('open', () => {
     if (status === 'connecting') {
@@ -432,6 +466,8 @@ function updateGuestRender(dt) {
 
 function draw() {
   ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
   ctx.fillStyle = '#e2e8f0';
   for (let y = 0; y < GAME_HEIGHT; y += 28) {
