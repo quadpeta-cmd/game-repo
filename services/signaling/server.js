@@ -33,38 +33,64 @@ function encodeFrame(payload) {
   return Buffer.concat([header, data]);
 }
 
-function decodeFrame(buffer) {
-  const first = buffer[0];
-  const opcode = first & 0x0f;
-  if (opcode === 0x8) {
-    return { close: true };
-  }
+function parseFrames(buffer) {
+  const frames = [];
+  let offset = 0;
 
-  const second = buffer[1];
-  const masked = Boolean(second & 0x80);
-  let offset = 2;
-  let length = second & 0x7f;
+  while (offset + 2 <= buffer.length) {
+    const first = buffer[offset];
+    const opcode = first & 0x0f;
+    const second = buffer[offset + 1];
+    const masked = Boolean(second & 0x80);
+    let payloadLen = second & 0x7f;
+    let cursor = offset + 2;
 
-  if (length === 126) {
-    length = buffer.readUInt16BE(offset);
-    offset += 2;
-  } else if (length === 127) {
-    length = Number(buffer.readBigUInt64BE(offset));
-    offset += 8;
-  }
-
-  let payload = buffer.subarray(offset);
-  if (masked) {
-    const mask = payload.subarray(0, 4);
-    payload = payload.subarray(4, 4 + length);
-    for (let i = 0; i < payload.length; i += 1) {
-      payload[i] ^= mask[i % 4];
+    if (payloadLen === 126) {
+      if (cursor + 2 > buffer.length) break;
+      payloadLen = buffer.readUInt16BE(cursor);
+      cursor += 2;
+    } else if (payloadLen === 127) {
+      if (cursor + 8 > buffer.length) break;
+      payloadLen = Number(buffer.readBigUInt64BE(cursor));
+      cursor += 8;
     }
-  } else {
-    payload = payload.subarray(0, length);
+
+    const maskLen = masked ? 4 : 0;
+    const frameLen = (cursor - offset) + maskLen + payloadLen;
+    if (offset + frameLen > buffer.length) break;
+
+    if (opcode === 0x8) {
+      frames.push({ close: true });
+      offset += frameLen;
+      continue;
+    }
+
+    if (opcode === 0x9) {
+      frames.push({ ping: true });
+      offset += frameLen;
+      continue;
+    }
+
+    let payloadStart = cursor;
+    let payload = buffer.subarray(payloadStart, payloadStart + payloadLen);
+
+    if (masked) {
+      const mask = buffer.subarray(cursor, cursor + 4);
+      payloadStart += 4;
+      payload = Buffer.from(buffer.subarray(payloadStart, payloadStart + payloadLen));
+      for (let i = 0; i < payload.length; i += 1) {
+        payload[i] ^= mask[i % 4];
+      }
+    }
+
+    if (opcode === 0x1) {
+      frames.push({ text: payload.toString('utf8') });
+    }
+
+    offset += frameLen;
   }
 
-  return { text: payload.toString('utf8') };
+  return { frames, remaining: buffer.subarray(offset) };
 }
 
 function send(client, payload) {
@@ -195,17 +221,33 @@ server.on('upgrade', (req, socket) => {
 
   socket.roomCode = null;
   socket.role = null;
+  socket.frameBuffer = Buffer.alloc(0);
 
   socket.on('data', (chunk) => {
-    const frame = decodeFrame(chunk);
-    if (frame.close) {
-      leave(socket);
-      socket.end();
-      return;
-    }
+    try {
+      socket.frameBuffer = Buffer.concat([socket.frameBuffer, chunk]);
+      const { frames, remaining } = parseFrames(socket.frameBuffer);
+      socket.frameBuffer = remaining;
 
-    if (frame.text) {
-      onMessage(socket, frame.text);
+      for (const frame of frames) {
+        if (frame.close) {
+          leave(socket);
+          socket.end();
+          return;
+        }
+
+        if (frame.ping) {
+          socket.write(Buffer.from([0x8a, 0x00]));
+          continue;
+        }
+
+        if (frame.text) {
+          onMessage(socket, frame.text);
+        }
+      }
+    } catch {
+      leave(socket);
+      socket.destroy();
     }
   });
 

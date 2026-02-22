@@ -215,8 +215,13 @@ function ensureSocket() {
   });
 
   socket.addEventListener('close', () => {
+    socket = null;
     setStatus('disconnected');
     setMessage('Signaling connection closed. Retry create/join.');
+  });
+
+  socket.addEventListener('error', () => {
+    setMessage('Signaling error. Check server and retry.');
   });
 }
 
@@ -443,7 +448,7 @@ window.addEventListener('keyup', (event) => {
   }
 });
 
-createRoomBtn.addEventListener('click', () => {
+createRoomBtn.addEventListener('click', async () => {
   ensureSocket();
   setStatus('waiting');
   setMessage('Creating room…');
@@ -453,17 +458,19 @@ createRoomBtn.addEventListener('click', () => {
   updateRoomLabel();
   updateControlState();
 
-  const sendWhenOpen = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      setTimeout(sendWhenOpen, 100);
-      return;
-    }
+  try {
+    await waitForSocketOpen();
     socket.send(JSON.stringify({ type: 'create_room', roomCode: code }));
-  };
-  sendWhenOpen();
+  } catch (error) {
+    roomCode = null;
+    updateRoomLabel();
+    updateControlState();
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+  }
 });
 
-joinRoomBtn.addEventListener('click', () => {
+joinRoomBtn.addEventListener('click', async () => {
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     setMessage('Enter a room code first.');
@@ -477,14 +484,16 @@ joinRoomBtn.addEventListener('click', () => {
   updateRoomLabel();
   updateControlState();
 
-  const sendWhenOpen = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      setTimeout(sendWhenOpen, 100);
-      return;
-    }
+  try {
+    await waitForSocketOpen();
     socket.send(JSON.stringify({ type: 'join_room', roomCode: code }));
-  };
-  sendWhenOpen();
+  } catch (error) {
+    roomCode = null;
+    updateRoomLabel();
+    updateControlState();
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+  }
 });
 
 leaveRoomBtn.addEventListener('click', () => {
