@@ -134,7 +134,21 @@ function updateControlState() {
 }
 
 function randomCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const values = new Uint32Array(6);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(values);
+  } else {
+    for (let i = 0; i < values.length; i += 1) {
+      values[i] = Math.floor(Math.random() * 0xffffffff);
+    }
+  }
+
+  let code = '';
+  for (let i = 0; i < values.length; i += 1) {
+    code += alphabet[values[i] % alphabet.length];
+  }
+  return code;
 }
 
 function closePeerConnection() {
@@ -569,8 +583,10 @@ createRoomBtn.addEventListener('click', async () => {
 
   const code = randomCode();
   pendingRoomCode = code;
+  roomCodeInput.value = code;
   updateRoomLabel();
   updateControlState();
+  setMessage(`Room code ${code} generated locally. Connecting to signaling…`);
 
   try {
     await waitForSocketOpen();
