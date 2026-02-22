@@ -23,6 +23,7 @@ canvas.addEventListener('pointerdown', () => {
   canvas.focus();
 });
 
+
 const defaultState = () => ({
   leftY: GAME_HEIGHT / 2,
   rightY: GAME_HEIGHT / 2,
@@ -61,31 +62,6 @@ async function createAndSendOffer() {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   socket.send(JSON.stringify({ type: 'offer', roomCode, offer }));
-}
-
-function sendWhenSocketOpen(payload, onFailure) {
-  const deadline = Date.now() + 5000;
-
-  const trySend = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(payload));
-      return;
-    }
-
-    if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
-      onFailure('Signaling connection closed. Retry create/join.');
-      return;
-    }
-
-    if (Date.now() > deadline) {
-      onFailure('Timed out connecting to signaling. Retry create/join.');
-      return;
-    }
-
-    setTimeout(trySend, 100);
-  };
-
-  trySend();
 }
 
 function setStatus(next) {
@@ -242,6 +218,10 @@ function ensureSocket() {
     socket = null;
     setStatus('disconnected');
     setMessage('Signaling connection closed. Retry create/join.');
+  });
+
+  socket.addEventListener('error', () => {
+    setMessage('Signaling error. Check server and retry.');
   });
 }
 
@@ -468,7 +448,7 @@ window.addEventListener('keyup', (event) => {
   }
 });
 
-createRoomBtn.addEventListener('click', () => {
+createRoomBtn.addEventListener('click', async () => {
   ensureSocket();
   setStatus('waiting');
   setMessage('Creating room…');
@@ -478,19 +458,19 @@ createRoomBtn.addEventListener('click', () => {
   updateRoomLabel();
   updateControlState();
 
-  sendWhenSocketOpen(
-    { type: 'create_room', roomCode: code },
-    (failureMessage) => {
-      roomCode = null;
-      updateRoomLabel();
-      updateControlState();
-      setStatus('disconnected');
-      setMessage(failureMessage);
-    },
-  );
+  try {
+    await waitForSocketOpen();
+    socket.send(JSON.stringify({ type: 'create_room', roomCode: code }));
+  } catch (error) {
+    roomCode = null;
+    updateRoomLabel();
+    updateControlState();
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+  }
 });
 
-joinRoomBtn.addEventListener('click', () => {
+joinRoomBtn.addEventListener('click', async () => {
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     setMessage('Enter a room code first.');
@@ -504,16 +484,16 @@ joinRoomBtn.addEventListener('click', () => {
   updateRoomLabel();
   updateControlState();
 
-  sendWhenSocketOpen(
-    { type: 'join_room', roomCode: code },
-    (failureMessage) => {
-      roomCode = null;
-      updateRoomLabel();
-      updateControlState();
-      setStatus('disconnected');
-      setMessage(failureMessage);
-    },
-  );
+  try {
+    await waitForSocketOpen();
+    socket.send(JSON.stringify({ type: 'join_room', roomCode: code }));
+  } catch (error) {
+    roomCode = null;
+    updateRoomLabel();
+    updateControlState();
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+  }
 });
 
 leaveRoomBtn.addEventListener('click', () => {
