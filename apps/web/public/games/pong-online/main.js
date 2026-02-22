@@ -7,19 +7,32 @@ function resolveSignalingUrl() {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const locationHost = window.location.host;
 
-  if (locationHost) {
-    return `${protocol}//${window.location.hostname}:8787`;
+  const fromUrl = (rawUrl) => {
+    try {
+      const base = new URL(rawUrl);
+      if (!base.hostname) {
+        return null;
+      }
+      base.protocol = protocol;
+      base.port = '8787';
+      base.pathname = '';
+      base.search = '';
+      base.hash = '';
+      return base.toString().replace(/\/$/, '');
+    } catch {
+      return null;
+    }
+  };
+
+  const fromLocation = fromUrl(window.location.href);
+  if (fromLocation) {
+    return fromLocation;
   }
 
-  try {
-    const docUrl = new URL(document.baseURI);
-    if (docUrl.hostname) {
-      return `${protocol}//${docUrl.hostname}:8787`;
-    }
-  } catch {
-    // Fall through to localhost fallback.
+  const fromBaseUri = fromUrl(document.baseURI);
+  if (fromBaseUri) {
+    return fromBaseUri;
   }
 
   return `${protocol}//localhost:8787`;
