@@ -225,6 +225,63 @@ function ensureSocket() {
   });
 }
 
+function waitForSocketOpen(timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    if (!socket) {
+      reject(new Error('Signaling socket not initialized'));
+      return;
+    }
+
+    if (socket.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+
+    if (socket.readyState !== WebSocket.CONNECTING) {
+      reject(new Error('Signaling socket unavailable'));
+      return;
+    }
+
+    let settled = false;
+
+    const cleanup = () => {
+      socket?.removeEventListener('open', handleOpen);
+      socket?.removeEventListener('error', handleError);
+      socket?.removeEventListener('close', handleClose);
+      clearTimeout(timeoutId);
+    };
+
+    const finish = (fn) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      fn();
+    };
+
+    const handleOpen = () => {
+      finish(resolve);
+    };
+
+    const handleError = () => {
+      finish(() => reject(new Error('Signaling connection error')));
+    };
+
+    const handleClose = () => {
+      finish(() => reject(new Error('Signaling connection closed')));
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      finish(() => reject(new Error('Timed out connecting to signaling')));
+    }, timeoutMs);
+
+    socket.addEventListener('open', handleOpen);
+    socket.addEventListener('error', handleError);
+    socket.addEventListener('close', handleClose);
+  });
+}
+
 async function flushPendingCandidates() {
   if (!pc || !remoteDescriptionSet || pendingCandidates.length === 0) {
     return;
