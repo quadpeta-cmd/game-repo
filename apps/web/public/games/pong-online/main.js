@@ -583,7 +583,6 @@ createRoomBtn.addEventListener('click', async () => {
 
   const code = randomCode();
   pendingRoomCode = code;
-  roomCodeInput.value = code;
   updateRoomLabel();
   updateControlState();
   setMessage(`Room code ${code} generated locally. Connecting to signaling…`);
