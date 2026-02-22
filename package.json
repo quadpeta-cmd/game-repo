@@ -1,0 +1,10 @@
+{
+  "name": "game-hub",
+  "private": true,
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:signaling": "npm --prefix services/signaling run dev",
+    "build": "npm --prefix apps/web run build",
+    "preview": "npm --prefix apps/web run preview"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "pong-online",
+  "name": "Pong Online",
+  "description": "Host-authoritative 2-player online Pong over WebRTC data channels.",
+  "entry": "index.html",
+  "modes": ["online"],
+  "permissions": {
+    "network": true,
+    "multiplayer": true
+  }
+}

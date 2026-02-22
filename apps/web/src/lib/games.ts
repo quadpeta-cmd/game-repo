@@ -3,8 +3,11 @@ export type GameManifest = {
   name: string;
   description: string;
   entry: string;
+  modes?: Array<'singleplayer' | 'local-multiplayer' | 'online' | string>;
   permissions?: {
     storage?: boolean;
+    network?: boolean;
+    multiplayer?: boolean;
   };
 };
 
