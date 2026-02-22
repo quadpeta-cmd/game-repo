@@ -19,6 +19,11 @@ const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
 const PADDLE_HEIGHT = 90;
 
+canvas.addEventListener('pointerdown', () => {
+  canvas.focus();
+});
+
+
 const defaultState = () => ({
   leftY: GAME_HEIGHT / 2,
   rightY: GAME_HEIGHT / 2,
@@ -48,6 +53,16 @@ let keys = { up: false, down: false };
 let lastSimTime = performance.now();
 let lastSnapshotTime = 0;
 let latestSnapshot = null;
+
+async function createAndSendOffer() {
+  if (!pc || !socket || socket.readyState !== WebSocket.OPEN || !roomCode) {
+    return;
+  }
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.send(JSON.stringify({ type: 'offer', roomCode, offer }));
+}
 
 function setStatus(next) {
   status = next;
@@ -139,9 +154,8 @@ function ensureSocket() {
       updateControlState();
       setRole('host');
       await createPeer(true);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.send(JSON.stringify({ type: 'offer', roomCode, offer }));
+      setStatus('waiting');
+      setMessage('Room ready. Share the code and wait for a guest…');
       return;
     }
 
@@ -155,7 +169,9 @@ function ensureSocket() {
     }
 
     if (message.type === 'peer_joined' && role === 'host') {
-      setMessage('Guest joined. Waiting for connection…');
+      setStatus('connecting');
+      setMessage('Guest joined. Starting WebRTC handshake…');
+      await createAndSendOffer();
       return;
     }
 
@@ -397,7 +413,15 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+function isControlKey(key) {
+  return key === 'w' || key === 'W' || key === 'ArrowUp' || key === 's' || key === 'S' || key === 'ArrowDown';
+}
+
 window.addEventListener('keydown', (event) => {
+  if (isControlKey(event.key)) {
+    event.preventDefault();
+  }
+
   if (event.key === 'w' || event.key === 'W' || event.key === 'ArrowUp') {
     keys.up = true;
   }
@@ -407,6 +431,10 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => {
+  if (isControlKey(event.key)) {
+    event.preventDefault();
+  }
+
   if (event.key === 'w' || event.key === 'W' || event.key === 'ArrowUp') {
     keys.up = false;
   }
