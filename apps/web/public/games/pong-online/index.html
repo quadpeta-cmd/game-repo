@@ -6,8 +6,8 @@
     <title>Pong Online</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <main>
+  <body style="margin: 0; background: #0f172a; color: #e2e8f0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+    <main style="max-width: 900px; margin: 0 auto; padding: 16px;">
       <h1>Pong Online</h1>
       <p class="subtitle">Create a room on one computer, join from another.</p>
       <section class="controls">
@@ -31,7 +31,13 @@
         </div>
         <p class="hint">Controls: W/S or ↑/↓</p>
       </section>
-      <canvas id="game" width="800" height="500" tabindex="0"></canvas>
+      <canvas
+        id="game"
+        width="800"
+        height="500"
+        tabindex="0"
+        style="width: 100%; max-width: 800px; height: auto; border: 1px solid #334155; background: #020617; display: block;"
+      ></canvas>
       <p id="message">Disconnected. Create or join a room.</p>
     </main>
     <script src="./main.js"></script>
