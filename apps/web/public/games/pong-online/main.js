@@ -64,56 +64,6 @@ async function createAndSendOffer() {
   socket.send(JSON.stringify({ type: 'offer', roomCode, offer }));
 }
 
-function waitForSocketOpen(timeoutMs = 5000) {
-  return new Promise((resolve, reject) => {
-    if (!socket) {
-      reject(new Error('Signaling not initialized'));
-      return;
-    }
-
-    if (socket.readyState === WebSocket.OPEN) {
-      resolve();
-      return;
-    }
-
-    if (socket.readyState !== WebSocket.CONNECTING) {
-      reject(new Error('Signaling connection is not open'));
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Timed out connecting to signaling'));
-    }, timeoutMs);
-
-    const onOpen = () => {
-      cleanup();
-      resolve();
-    };
-
-    const onClose = () => {
-      cleanup();
-      reject(new Error('Signaling connection closed'));
-    };
-
-    const onError = () => {
-      cleanup();
-      reject(new Error('Signaling connection failed'));
-    };
-
-    const cleanup = () => {
-      clearTimeout(timer);
-      socket?.removeEventListener('open', onOpen);
-      socket?.removeEventListener('close', onClose);
-      socket?.removeEventListener('error', onError);
-    };
-
-    socket.addEventListener('open', onOpen);
-    socket.addEventListener('close', onClose);
-    socket.addEventListener('error', onError);
-  });
-}
-
 function setStatus(next) {
   status = next;
   statusEl.textContent = status;
