@@ -128,7 +128,7 @@ function updateRoomLabel() {
 function updateControlState() {
   const active = Boolean(roomCode || pendingRoomCode);
   leaveRoomBtn.disabled = !active;
-  createRoomBtn.disabled = active;
+  createRoomBtn.disabled = false;
   joinRoomBtn.disabled = active;
   roomCodeInput.disabled = active;
 }
@@ -559,6 +559,10 @@ window.addEventListener('keyup', (event) => {
 });
 
 createRoomBtn.addEventListener('click', async () => {
+  if (roomCode || pendingRoomCode) {
+    disconnectLocal(false);
+  }
+
   ensureSocket();
   setStatus('waiting');
   setMessage('Creating room…');
