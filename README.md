@@ -28,6 +28,23 @@ Ports:
 - Hub (Vite dev): `http://localhost:5173`
 - Signaling (WebSocket): `ws://localhost:8787`
 
+
+### What you should see in dev
+
+When you run:
+
+```bash
+npm --prefix apps/web run dev -- --host 0.0.0.0
+```
+
+Vite starts the hub app, and the default page at `http://localhost:5173/` is the **catalog** view.
+
+To see the Pong Online screen used in validation screenshots, open:
+
+- `http://localhost:5173/play/pong-online` (hub Play route, game rendered inside iframe)
+
+Note: opening `http://localhost:5173/games/pong-online/index.html` loads the raw game page directly (not the hub Play wrapper), so it will look different from hub screenshots.
+
 ## Build and preview
 
 Build the web app:
