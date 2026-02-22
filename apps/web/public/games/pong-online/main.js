@@ -79,6 +79,7 @@ const defaultState = () => ({
 let role = null;
 let status = 'disconnected';
 let roomCode = null;
+let pendingRoomCode = null;
 let socket = null;
 let pc = null;
 let dataChannel = null;
@@ -119,12 +120,13 @@ function setRole(nextRole) {
 }
 
 function updateRoomLabel() {
-  roomLabelEl.textContent = roomCode || '-';
-  copyCodeBtn.disabled = !roomCode;
+  const displayCode = roomCode || pendingRoomCode;
+  roomLabelEl.textContent = displayCode || '-';
+  copyCodeBtn.disabled = !displayCode;
 }
 
 function updateControlState() {
-  const active = Boolean(roomCode);
+  const active = Boolean(roomCode || pendingRoomCode);
   leaveRoomBtn.disabled = !active;
   createRoomBtn.disabled = active;
   joinRoomBtn.disabled = active;
@@ -160,6 +162,7 @@ function disconnectLocal(isRemote = false) {
   }
 
   setRole(null);
+  pendingRoomCode = null;
   if (!isRemote) {
     roomCode = null;
   }
@@ -196,6 +199,7 @@ function ensureSocket() {
     const message = JSON.parse(event.data);
 
     if (message.type === 'room_created') {
+      pendingRoomCode = null;
       roomCode = message.roomCode;
       updateRoomLabel();
       updateControlState();
@@ -560,7 +564,7 @@ createRoomBtn.addEventListener('click', async () => {
   setMessage('Creating room…');
 
   const code = randomCode();
-  roomCode = code;
+  pendingRoomCode = code;
   updateRoomLabel();
   updateControlState();
 
@@ -568,11 +572,8 @@ createRoomBtn.addEventListener('click', async () => {
     await waitForSocketOpen();
     socket.send(JSON.stringify({ type: 'create_room', roomCode: code }));
   } catch (error) {
-    roomCode = null;
-    updateRoomLabel();
-    updateControlState();
     setStatus('disconnected');
-    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+    setMessage(error instanceof Error ? `${error.message}. Room code generated locally but not registered yet.` : 'Unable to connect to signaling. Room code generated locally but not registered yet.');
   }
 });
 
@@ -584,6 +585,7 @@ joinRoomBtn.addEventListener('click', async () => {
   }
 
   ensureSocket();
+  pendingRoomCode = null;
   setStatus('connecting');
   setMessage('Joining room…');
   roomCode = code;
@@ -607,13 +609,14 @@ leaveRoomBtn.addEventListener('click', () => {
 });
 
 copyCodeBtn.addEventListener('click', async () => {
-  if (!roomCode) {
+  const code = roomCode || pendingRoomCode;
+  if (!code) {
     return;
   }
 
   try {
-    await navigator.clipboard.writeText(roomCode);
-    setMessage(`Room code ${roomCode} copied.`);
+    await navigator.clipboard.writeText(code);
+    setMessage(`Room code ${code} copied.`);
   } catch {
     setMessage('Clipboard unavailable. Copy the room code manually.');
   }
