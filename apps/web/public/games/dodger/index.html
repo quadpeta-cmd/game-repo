@@ -3,69 +3,187 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Block Dodger</title>
+    <title>Dodger: Hippo Siege</title>
     <style>
       body { margin: 0; background: #0b1020; color: #e2e8f0; font-family: system-ui, sans-serif; }
-      canvas { display: block; margin: 0 auto; background: #111827; }
-      p { text-align: center; }
+      canvas { display: block; margin: 0 auto; background: radial-gradient(circle at top, #18243f, #0e1529 70%); }
+      p { text-align: center; margin: 8px; color: #bfdbfe; }
     </style>
   </head>
   <body>
-    <canvas id="game" width="640" height="360"></canvas>
-    <p>Use ← and → to dodge.</p>
+    <canvas id="game" width="800" height="480"></canvas>
+    <p>Use ← and → to dodge. Survive 90s per level. 3 pellet hits = defeat.</p>
     <script>
       const canvas = document.getElementById('game');
       const ctx = canvas.getContext('2d');
-      const player = { x: 300, y: 320, w: 40, h: 20, speed: 6 };
+      const LEVEL_SECONDS = 90;
+      const player = { x: 380, y: 430, w: 44, h: 24, speed: 7, hp: 3 };
       const keys = { left: false, right: false };
-      const blocks = [];
+      const enemies = [];
+      const pellets = [];
+      let boss = null;
       let frame = 0;
+      let level = 1;
+      let timeLeft = LEVEL_SECONDS;
+      let timerAccum = 0;
       let score = 0;
+      let levelBanner = 150;
+      let winBanner = 0;
 
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'ArrowLeft') keys.left = true;
-        if (event.key === 'ArrowRight') keys.right = true;
-      });
-      document.addEventListener('keyup', (event) => {
-        if (event.key === 'ArrowLeft') keys.left = false;
-        if (event.key === 'ArrowRight') keys.right = false;
-      });
+      const shapeTypes = ['rect', 'circle', 'diamond', 'triangle'];
+      const colors = ['#f87171', '#fb923c', '#facc15', '#34d399', '#60a5fa', '#c084fc'];
 
-      function intersects(a, b) {
-        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+      document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') keys.left = true; if (e.key === 'ArrowRight') keys.right = true; });
+      document.addEventListener('keyup', (e) => { if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; });
+
+      function rand(min, max) { return min + Math.random() * (max - min); }
+      function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+      function intersects(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+      function resetRun() {
+        level = 1; timeLeft = LEVEL_SECONDS; timerAccum = 0; frame = 0; score = 0;
+        player.x = 380; player.hp = 3; enemies.length = 0; pellets.length = 0; boss = null; levelBanner = 200;
+      }
+      function startNextLevel() {
+        level += 1;
+        if (level > 5) { winBanner = 360; resetRun(); return; }
+        timeLeft = LEVEL_SECONDS; timerAccum = 0; enemies.length = 0; pellets.length = 0; boss = null; player.hp = 3; levelBanner = 200;
       }
 
-      function reset() {
-        blocks.length = 0;
-        score = 0;
-        frame = 0;
-        player.x = 300;
+      function spawnEnemy() {
+        const baseW = rand(20, 36);
+        const baseH = rand(20, 36);
+        const shape = pick(shapeTypes);
+        const color = pick(colors);
+        const progress = 1 - (timeLeft / LEVEL_SECONDS);
+        let e = { x: rand(0, canvas.width - baseW), y: -baseH - 4, w: baseW, h: baseH, vx: 0, vy: rand(1.8, 3.2), shape, color, shotCd: rand(50, 130) };
+
+        if (level >= 2) {
+          const medianBoost = progress * 2.4;
+          e.vy = rand(1.4 + medianBoost, 4.4 + medianBoost);
+        }
+        if (level >= 4 && Math.random() < 0.45) {
+          const fromLeft = Math.random() < 0.5;
+          const topOrBottom = Math.random() < 0.5;
+          e.x = fromLeft ? -baseW : canvas.width + baseW;
+          e.y = topOrBottom ? -baseH : canvas.height + baseH;
+          e.vx = fromLeft ? rand(1.0, 2.8) : -rand(1.0, 2.8);
+          e.vy = topOrBottom ? rand(1.2, 2.6) : -rand(1.2, 2.6);
+        }
+        enemies.push(e);
       }
 
-      function update() {
+      function spawnPopcorn(shooter, aimed) {
+        const cx = shooter.x + shooter.w / 2;
+        const cy = shooter.y + shooter.h / 2;
+        let vx = rand(-1.2, 1.2), vy = rand(2.2, 3.8);
+        if (aimed) {
+          const dx = (player.x + player.w / 2) - cx;
+          const dy = (player.y + player.h / 2) - cy;
+          const mag = Math.hypot(dx, dy) || 1;
+          vx = (dx / mag) * rand(2.0, 3.1);
+          vy = (dy / mag) * rand(2.0, 3.1);
+        }
+        pellets.push({ x: cx, y: cy, w: 8, h: 8, vx, vy, life: 240 });
+      }
+
+      function ensureBoss() {
+        if (level !== 5 || boss) return;
+        boss = { x: canvas.width / 2 - 80, y: 28, w: 160, h: 88, vx: 2.2, fireCd: 28 };
+      }
+
+      function update(dt) {
         frame += 1;
+        timerAccum += dt;
+        if (timerAccum >= 1) { timerAccum -= 1; timeLeft -= 1; }
+        if (timeLeft <= 0) { startNextLevel(); return; }
+
         if (keys.left) player.x -= player.speed;
         if (keys.right) player.x += player.speed;
         player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
-        if (frame % 25 === 0) {
-          blocks.push({ x: Math.random() * (canvas.width - 24), y: -20, w: 24, h: 24, vy: 2 + Math.random() * 2 });
+        const spawnRate = Math.max(8, 24 - level * 2);
+        if (frame % spawnRate === 0) spawnEnemy();
+        ensureBoss();
+
+        for (const e of enemies) {
+          e.x += e.vx;
+          e.y += e.vy;
+          if (level >= 3) {
+            e.shotCd -= 1;
+            if (e.shotCd <= 0) {
+              spawnPopcorn(e, Math.random() < 0.55);
+              e.shotCd = rand(40, 120);
+            }
+          }
+          if (intersects(player, e)) { alert('You got crushed! Restarting at level 1.'); resetRun(); return; }
         }
 
-        for (const block of blocks) {
-          block.y += block.vy;
-          if (intersects(player, block)) {
-            reset();
-            return;
+        if (boss) {
+          boss.x += boss.vx;
+          if (boss.x < 20 || boss.x + boss.w > canvas.width - 20) boss.vx *= -1;
+          boss.fireCd -= 1;
+          if (boss.fireCd <= 0) {
+            spawnPopcorn(boss, Math.random() < 0.75);
+            if (Math.random() < 0.4) spawnPopcorn(boss, false);
+            boss.fireCd = rand(12, 24);
+          }
+          if (intersects(player, boss)) { alert('Hippo stomped you! Restarting at level 1.'); resetRun(); return; }
+        }
+
+        for (const p of pellets) {
+          p.x += p.vx; p.y += p.vy; p.life -= 1;
+          if (intersects(player, p)) {
+            player.hp -= 1; p.life = 0;
+            if (player.hp <= 0) { alert('Popcorn barrage got you! Restarting at level 1.'); resetRun(); return; }
           }
         }
 
-        for (let i = blocks.length - 1; i >= 0; i -= 1) {
-          if (blocks[i].y > canvas.height) {
-            blocks.splice(i, 1);
-            score += 1;
+        for (let i = enemies.length - 1; i >= 0; i -= 1) {
+          const e = enemies[i];
+          if (e.y > canvas.height + 60 || e.x < -80 || e.x > canvas.width + 80 || e.y < -80) {
+            enemies.splice(i, 1); score += 1;
           }
         }
+        for (let i = pellets.length - 1; i >= 0; i -= 1) {
+          const p = pellets[i];
+          if (p.life <= 0 || p.y > canvas.height + 20 || p.x < -20 || p.x > canvas.width + 20 || p.y < -20) pellets.splice(i, 1);
+        }
+      }
+
+      function drawEnemy(e) {
+        ctx.fillStyle = e.color;
+        if (e.shape === 'rect') ctx.fillRect(e.x, e.y, e.w, e.h);
+        else if (e.shape === 'circle') { ctx.beginPath(); ctx.arc(e.x + e.w / 2, e.y + e.h / 2, e.w / 2, 0, Math.PI * 2); ctx.fill(); }
+        else if (e.shape === 'diamond') {
+          ctx.beginPath();
+          ctx.moveTo(e.x + e.w / 2, e.y); ctx.lineTo(e.x + e.w, e.y + e.h / 2); ctx.lineTo(e.x + e.w / 2, e.y + e.h); ctx.lineTo(e.x, e.y + e.h / 2);
+          ctx.closePath(); ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(e.x + e.w / 2, e.y); ctx.lineTo(e.x + e.w, e.y + e.h); ctx.lineTo(e.x, e.y + e.h);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+
+      function drawHippo(h) {
+        ctx.fillStyle = '#a78bfa';
+        ctx.fillRect(h.x + 10, h.y + 18, h.w - 20, h.h - 20);
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillRect(h.x + 20, h.y + 42, h.w - 40, h.h - 16);
+        ctx.fillStyle = '#ddd6fe';
+        ctx.fillRect(h.x + 40, h.y + 62, h.w - 80, 10);
+        ctx.fillStyle = '#111827';
+        ctx.beginPath(); ctx.arc(h.x + 48, h.y + 38, 5, 0, Math.PI * 2); ctx.arc(h.x + h.w - 48, h.y + 38, 5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      function drawPopcorn(p) {
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.moveTo(p.x + 4, p.y);
+        ctx.quadraticCurveTo(p.x + 8, p.y + 2, p.x + 7, p.y + 6);
+        ctx.quadraticCurveTo(p.x + 4, p.y + 8, p.x + 1, p.y + 6);
+        ctx.quadraticCurveTo(p.x, p.y + 2, p.x + 4, p.y);
+        ctx.fill();
       }
 
       function draw() {
@@ -73,22 +191,39 @@
         ctx.fillStyle = '#22c55e';
         ctx.fillRect(player.x, player.y, player.w, player.h);
 
-        ctx.fillStyle = '#f87171';
-        for (const block of blocks) {
-          ctx.fillRect(block.x, block.y, block.w, block.h);
-        }
+        for (const e of enemies) drawEnemy(e);
+        for (const p of pellets) drawPopcorn(p);
+        if (boss) drawHippo(boss);
 
         ctx.fillStyle = '#e2e8f0';
-        ctx.fillText(`Score: ${score}`, 16, 20);
+        ctx.font = '16px system-ui';
+        ctx.fillText(`Level: ${level}/5`, 14, 24);
+        ctx.fillText(`Time: ${String(timeLeft).padStart(2, '0')}s`, 130, 24);
+        ctx.fillText(`Score: ${score}`, 230, 24);
+        ctx.fillText(`HP: ${player.hp}`, 320, 24);
+        if (levelBanner > 0) {
+          levelBanner -= 1;
+          ctx.fillStyle = 'rgba(191,219,254,0.95)';
+          ctx.font = 'bold 34px system-ui';
+          ctx.fillText(`LEVEL ${level}`, canvas.width / 2 - 90, canvas.height / 2);
+        }
+        if (winBanner > 0) {
+          winBanner -= 1;
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.font = 'bold 82px system-ui';
+          ctx.fillText('Congratulations', 70, canvas.height / 2 + 10);
+        }
       }
 
-      function loop() {
-        update();
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        update(dt);
         draw();
         requestAnimationFrame(loop);
       }
-
-      loop();
+      loop(last);
     </script>
   </body>
 </html>
