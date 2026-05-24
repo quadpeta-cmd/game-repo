@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   LEVEL_SECONDS,
   enemyCanFireInLevel3,
+  initialEnemyShotCooldownRange,
   isLevel4SideSpawnAllowed,
   level3SpawnShotCooldown,
   nextLevel,
@@ -60,4 +61,15 @@ test('level 4 side spawns are allowed only from top or top corners', () => {
   assert.equal(isLevel4SideSpawnAllowed(40, 480), true);
   assert.equal(isLevel4SideSpawnAllowed(200, 480), false);
   assert.equal(isLevel4SideSpawnAllowed(520, 480), false);
+});
+
+
+test('initial enemy shot cooldown is short in level 3+', () => {
+  assert.deepEqual(initialEnemyShotCooldownRange(3), { min: 6, max: 22 });
+  assert.deepEqual(initialEnemyShotCooldownRange(5), { min: 6, max: 22 });
+});
+
+test('initial enemy shot cooldown stays long before level 3', () => {
+  assert.deepEqual(initialEnemyShotCooldownRange(1), { min: 50, max: 130 });
+  assert.deepEqual(initialEnemyShotCooldownRange(2), { min: 50, max: 130 });
 });
