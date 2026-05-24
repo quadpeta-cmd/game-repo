@@ -4,6 +4,33 @@ export function buildInviteLink(currentHref, roomCode) {
   return invite.toString();
 }
 
+export function resolveSignalingUrl({ currentUrl, baseUri, override }) {
+  if (override) return override;
+  const protocol = new URL(currentUrl).protocol === 'https:' ? 'wss:' : 'ws:';
+
+  const fromUrl = (rawUrl) => {
+    try {
+      const base = new URL(rawUrl);
+      if (!base.hostname) return null;
+      base.protocol = protocol;
+      base.port = '8787';
+      base.pathname = '';
+      base.search = '';
+      base.hash = '';
+      return base.toString().replace(/\/$/, '');
+    } catch {
+      return null;
+    }
+  };
+
+  return fromUrl(currentUrl) || fromUrl(baseUri) || `${protocol}//localhost:8787`;
+}
+
+export function generateRoomCode(randomValues) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('');
+}
+
 export function winnerFromOutOfBounds(ballX, gameWidth) {
   if (ballX < 0) return 'right';
   if (ballX > gameWidth) return 'left';

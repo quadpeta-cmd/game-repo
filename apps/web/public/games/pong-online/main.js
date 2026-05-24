@@ -1,32 +1,21 @@
-import { buildInviteLink, winnerFromOutOfBounds } from './game-logic.mjs';
+import { generateRoomCode, resolveSignalingUrl } from './game-logic.mjs';
 
-function resolveSignalingUrls() {
-  const params = new URLSearchParams(window.location.search);
-  const override = params.get('signaling');
-  if (override) return [override];
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return [`${wsProtocol}//${window.location.host}/ws`, `${wsProtocol}//${window.location.hostname}:8787`, `${wsProtocol}//localhost:8787`];
-}
-
-const SIGNALING_URLS = resolveSignalingUrls();
-let signalingUrlIndex = 0;
+const signalingOverride = new URLSearchParams(window.location.search).get('signaling');
+const SIGNALING_URL = resolveSignalingUrl({
+  currentUrl: window.location.href,
+  baseUri: document.baseURI,
+  override: signalingOverride,
+});
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 500;
-const BASE_PADDLE_HEIGHT = 90;
-const WIN_SCORE = 8;
-const EFFECT_MS = 20000;
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const params = new URLSearchParams(window.location.search);
 
 const statusEl = document.getElementById('status');
 const roleEl = document.getElementById('role');
 const roomLabelEl = document.getElementById('room-label');
 const messageEl = document.getElementById('message');
-const signalLogEl = document.getElementById('signal-log');
-const patternSelectEl = document.getElementById('pattern-select');
+
 const createRoomBtn = document.getElementById('create-room');
 const joinRoomBtn = document.getElementById('join-room');
 const leaveRoomBtn = document.getElementById('leave-room');
@@ -149,13 +138,54 @@ function updateControlState() {
 }
 
 function randomCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const values = new Uint32Array(6);
   if (window.crypto?.getRandomValues) {
     window.crypto.getRandomValues(values);
   } else {
-    powerItems.push({type:'down',targetSide:winningSide(),effect:['wavy','small','gaps'][Math.floor(Math.random()*3)],x:GAME_WIDTH/2,y:70+Math.random()*(GAME_HEIGHT-140),vx:(winningSide()==='left'?-2:2),vy:(Math.random()-0.5)*2,icon:'⬇️'});
+    for (let i = 0; i < values.length; i += 1) {
+      values[i] = Math.floor(Math.random() * 0xffffffff);
+    }
   }
+
+  return generateRoomCode(values);
+}
+
+function closePeerConnection() {
+  if (dataChannel) {
+    dataChannel.close();
+  }
+  dataChannel = null;
+
+  if (pc) {
+    pc.onicecandidate = null;
+    pc.ondatachannel = null;
+    pc.onconnectionstatechange = null;
+    pc.close();
+  }
+  pc = null;
+  remoteDescriptionSet = false;
+  pendingCandidates = [];
+}
+
+function disconnectLocal(isRemote = false) {
+  closePeerConnection();
+
+  if (socket && socket.readyState === WebSocket.OPEN && roomCode) {
+    socket.send(JSON.stringify({ type: 'leave', roomCode }));
+  }
+
+  setRole(null);
+  pendingRoomCode = null;
+  if (!isRemote) {
+    roomCode = null;
+  }
+  updateRoomLabel();
+  updateControlState();
+  setStatus('disconnected');
+  setMessage(isRemote ? 'Peer disconnected. You can rejoin with the room code.' : 'Disconnected. Create or join a room.');
+  state = defaultState();
+  renderState = defaultState();
+  latestSnapshot = null;
 }
 
 function ensureSocket() {
@@ -411,39 +441,80 @@ function sendInput(value) {
   if (dataChannel && dataChannel.readyState === 'open') {
     dataChannel.send(JSON.stringify({ type: 'input', value: guestInput }));
   }
-  powerItems=powerItems.filter((i)=>!i.dead);
 }
 
-function resetBall(direction){state.ballX=GAME_WIDTH/2;state.ballY=GAME_HEIGHT/2;state.ballVX=280*direction;state.ballVY=(Math.random()>0.5?1:-1)*(120+Math.random()*120);}
-function updateGuestRender(dt){if(!latestSnapshot)return; const s=Math.min(1,dt*10); renderState.leftY += (latestSnapshot.leftY-renderState.leftY)*s; renderState.rightY += (latestSnapshot.rightY-renderState.rightY)*s; renderState.ballX += (latestSnapshot.ballX-renderState.ballX)*s; renderState.ballY += (latestSnapshot.ballY-renderState.ballY)*s; renderState.leftScore=latestSnapshot.leftScore; renderState.rightScore=latestSnapshot.rightScore; }
+function clampPaddle(y) {
+  return Math.max(PADDLE_HEIGHT / 2, Math.min(GAME_HEIGHT - PADDLE_HEIGHT / 2, y));
+}
 
-function drawPaddle(x, centerY, side){
-  const pattern = patternById(selectedPatternId); const h=paddleHeightFor(side); const top=centerY-h/2;
-  const grad=ctx.createLinearGradient(x,0,x+12,0); grad.addColorStop(0,pattern.colors[0]); grad.addColorStop(0.5,pattern.colors[1]); grad.addColorStop(1,pattern.colors[2]); ctx.fillStyle=grad;
-  if((side==='left'?leftEffects:rightEffects).kind==='gaps' && effectActive(side==='left'?leftEffects:rightEffects)){
-    ctx.fillRect(x,top,12,h*0.3); ctx.fillRect(x,top+h*0.45,12,h*0.25); ctx.fillRect(x,top+h*0.8,12,h*0.2);
-  } else { ctx.fillRect(x,top,12,h); }
-  if((side==='left'?leftEffects:rightEffects).kind==='mini' && effectActive(side==='left'?leftEffects:rightEffects)){
-    ctx.fillRect(x-8,centerY-h*0.2,4,h*0.18); ctx.fillRect(x+16,centerY+h*0.02,4,h*0.18);
+function simulateHost(dt) {
+  state.leftY = clampPaddle(state.leftY + hostInputs.host * 350 * dt);
+  state.rightY = clampPaddle(state.rightY + hostInputs.guest * 350 * dt);
+
+  state.ballX += state.ballVX * dt;
+  state.ballY += state.ballVY * dt;
+
+  if (state.ballY < 8 || state.ballY > GAME_HEIGHT - 8) {
+    state.ballVY *= -1;
+    state.ballY = Math.max(8, Math.min(GAME_HEIGHT - 8, state.ballY));
   }
+
+  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= PADDLE_HEIGHT / 2;
+  if (leftHit && state.ballVX < 0) {
+    state.ballVX *= -1.04;
+    state.ballX = 36;
+  }
+
+  const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= PADDLE_HEIGHT / 2;
+  if (rightHit && state.ballVX > 0) {
+    state.ballVX *= -1.04;
+    state.ballX = GAME_WIDTH - 36;
+  }
+
+  if (state.ballX < 0) {
+    state.rightScore += 1;
+    resetBall(-1);
+  }
+
+  if (state.ballX > GAME_WIDTH) {
+    state.leftScore += 1;
+    resetBall(1);
+  }
+
+  state.tick += 1;
+  renderState = { ...state };
 }
 
-function draw(){
-  ctx.clearRect(0,0,GAME_WIDTH,GAME_HEIGHT); ctx.fillStyle='#020617'; ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);
-  ctx.fillStyle='#e2e8f0'; for(let y=0;y<GAME_HEIGHT;y+=28) ctx.fillRect(GAME_WIDTH/2-2,y,4,16);
-  if(effectActive(leftEffects)&&leftEffects.kind==='wavy'){ctx.save();ctx.translate(Math.sin(performance.now()/80)*4,0);} drawPaddle(20,renderState.leftY,'left'); if(effectActive(leftEffects)&&leftEffects.kind==='wavy') ctx.restore();
-  if(effectActive(rightEffects)&&rightEffects.kind==='wavy'){ctx.save();ctx.translate(Math.sin(performance.now()/80)*-4,0);} drawPaddle(GAME_WIDTH-32,renderState.rightY,'right'); if(effectActive(rightEffects)&&rightEffects.kind==='wavy') ctx.restore();
-  ctx.beginPath(); ctx.arc(renderState.ballX,renderState.ballY,8,0,Math.PI*2); ctx.fill();
-  ctx.font='bold 40px sans-serif'; ctx.fillText(String(renderState.leftScore),GAME_WIDTH/2-80,48); ctx.fillText(String(renderState.rightScore),GAME_WIDTH/2+52,48);
-  ctx.font='22px sans-serif'; for(const item of powerItems){ctx.fillText(item.icon,item.x-8,item.y+8);} 
-  if(winnerText){ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.font='bold 58px serif'; ctx.fillText('CONGRATULATIONS :)',120,GAME_HEIGHT/2); ctx.font='bold 28px serif'; ctx.fillText(`${winnerText} wins 8-point match`,205,GAME_HEIGHT/2+44);} 
+function resetBall(direction) {
+  state.ballX = GAME_WIDTH / 2;
+  state.ballY = GAME_HEIGHT / 2;
+  state.ballVX = 280 * direction;
+  state.ballVY = (Math.random() > 0.5 ? 1 : -1) * (120 + Math.random() * 120);
 }
 
-function sendInput(value){if(role==='host'){hostInputs.host=value; return;} guestInput=value; if(dataChannel?.readyState==='open') dataChannel.send(JSON.stringify({type:'input',value:guestInput}));}
-function tick(now){const dt=Math.min((now-lastSimTime)/1000,0.05); lastSimTime=now; const input=keys.up&&!keys.down?-1:keys.down&&!keys.up?1:0; if(input!==guestInput||(role==='host'&&input!==hostInputs.host)) sendInput(input); if(role==='host'&&status==='connected') {simulateHost(dt); if(dataChannel?.readyState==='open'&&now-lastSnapshotTime>40){dataChannel.send(JSON.stringify({type:'snapshot',state})); if(dataChannel.readyState==='open') dataChannel.send(JSON.stringify({type:'pattern', value:selectedPatternId})); lastSnapshotTime=now;}} if(role==='guest'&&status==='connected') updateGuestRender(dt); draw(); requestAnimationFrame(tick);}
+function updateGuestRender(dt) {
+  if (!latestSnapshot) {
+    return;
+  }
 
-window.addEventListener('keydown',(e)=>{if(['w','W','ArrowUp'].includes(e.key)) keys.up=true; if(['s','S','ArrowDown'].includes(e.key)) keys.down=true;});
-window.addEventListener('keyup',(e)=>{if(['w','W','ArrowUp'].includes(e.key)) keys.up=false; if(['s','S','ArrowDown'].includes(e.key)) keys.down=false;});
+  const smoothing = Math.min(1, dt * 10);
+  renderState.leftY += (latestSnapshot.leftY - renderState.leftY) * smoothing;
+  renderState.rightY += (latestSnapshot.rightY - renderState.rightY) * smoothing;
+  renderState.ballX += (latestSnapshot.ballX - renderState.ballX) * smoothing;
+  renderState.ballY += (latestSnapshot.ballY - renderState.ballY) * smoothing;
+  renderState.leftScore = latestSnapshot.leftScore;
+  renderState.rightScore = latestSnapshot.rightScore;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+  ctx.fillStyle = '#e2e8f0';
+  for (let y = 0; y < GAME_HEIGHT; y += 28) {
+    ctx.fillRect(GAME_WIDTH / 2 - 2, y, 4, 16);
+  }
 
   ctx.fillRect(20, renderState.leftY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
   ctx.fillRect(GAME_WIDTH - 32, renderState.rightY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
