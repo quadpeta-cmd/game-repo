@@ -12,6 +12,13 @@ function resolveSignalingUrl({ currentUrl, baseUri, override }) {
     try {
       const base = new URL(rawUrl);
       if (!base.hostname) return null;
+      const codespacesLikeHost = base.hostname.match(/^(.*)-(\d+)\.app\.github\.dev$/);
+      if (codespacesLikeHost) {
+        base.hostname = `${codespacesLikeHost[1]}-8787.app.github.dev`;
+        base.port = '';
+      } else {
+        base.port = '8787';
+      }
       base.protocol = protocol;
       const codespacesHost = resolveCodespacesHost(base.host);
       if (codespacesHost) {
@@ -87,12 +94,25 @@ const joinRoomBtn = document.getElementById('join-room');
 const leaveRoomBtn = document.getElementById('leave-room');
 const copyCodeBtn = document.getElementById('copy-code');
 const roomCodeInput = document.getElementById('room-code');
+const patternSelectEl = document.getElementById('pattern-select');
 const debugPanelEl = document.getElementById('debug-panel');
 const debugLogEl = document.getElementById('debug-log');
 
 const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
 const PADDLE_HEIGHT = 90;
+const WIN_SCORE = 8;
+const POWER_DURATION = 20000;
+const POWER_ITEM_SIZE = 10;
+
+const PATTERN_PALETTES = [
+  { name: '🌸 Bloom', colors: ['#f9a8d4', '#f472b6', '#fb7185', '#fef08a'] },
+  { name: '🌺 Sunset Petals', colors: ['#f97316', '#fb7185', '#f43f5e', '#fde68a'] },
+  { name: '🌼 Daisy Pop', colors: ['#fef9c3', '#fde047', '#60a5fa', '#a3e635'] },
+  { name: '🌷 Lavender Garden', colors: ['#c4b5fd', '#a78bfa', '#22d3ee', '#f9a8d4'] },
+  { name: '🌿 Forest Fern', colors: ['#4ade80', '#22c55e', '#a3e635', '#bef264'] },
+  { name: '🌌 Aurora', colors: ['#38bdf8', '#22d3ee', '#a78bfa', '#34d399'] },
+];
 
 canvas.addEventListener('pointerdown', () => {
   canvas.focus();
@@ -109,7 +129,21 @@ const defaultState = () => ({
   leftScore: 0,
   rightScore: 0,
   tick: 0,
+  winner: null,
+  effects: { left: {}, right: {} },
+  powerItems: [],
+  stretchWrappedBy: null,
+  selectedPatterns: [],
+  patterns: { left: '#e2e8f0', right: '#e2e8f0' },
 });
+
+function nowMs() {
+  return Date.now();
+}
+
+function hasEffect(effects, name) {
+  return effects[name] && effects[name] > nowMs();
+}
 
 let role = null;
 let status = 'disconnected';
@@ -128,10 +162,12 @@ let state = defaultState();
 let renderState = defaultState();
 let hostInputs = { host: 0, guest: 0 };
 let guestInput = 0;
+let lastIntent = { host: 0, guest: 0 };
 let keys = { up: false, down: false };
 let lastSimTime = performance.now();
 let lastSnapshotTime = 0;
 let latestSnapshot = null;
+let activePatternChoices = [];
 const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
 const MAX_DEBUG_LINES = 300;
 const debugLines = [];
@@ -558,9 +594,73 @@ function clampPaddle(y) {
   return Math.max(PADDLE_HEIGHT / 2, Math.min(GAME_HEIGHT - PADDLE_HEIGHT / 2, y));
 }
 
+function pickPatternChoices() {
+  const pool = [...PATTERN_PALETTES].sort(() => Math.random() - 0.5);
+  return pool.slice(0, 4);
+}
+
+function setupPatternSelect() {
+  if (!patternSelectEl) return;
+  activePatternChoices = pickPatternChoices();
+  patternSelectEl.innerHTML = '';
+  activePatternChoices.forEach((pattern, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = pattern.name;
+    patternSelectEl.appendChild(option);
+  });
+}
+
+function selectedPatternColor() {
+  const idx = Number(patternSelectEl?.value || 0);
+  const pattern = activePatternChoices[idx] || activePatternChoices[0];
+  return pattern?.colors[0] ?? '#e2e8f0';
+}
+
+function applyEffect(side, type) {
+  state.effects[side][type] = nowMs() + POWER_DURATION;
+}
+
+function spawnPowerItem(kind) {
+  const trailing = state.leftScore === state.rightScore ? (Math.random() > 0.5 ? 'left' : 'right') : (state.leftScore < state.rightScore ? 'left' : 'right');
+  const winning = trailing === 'left' ? 'right' : 'left';
+  const targetSide = kind === 'powerUp' ? trailing : winning;
+  const powerTypes = kind === 'powerUp'
+    ? ['bigger', 'faster', 'minis', 'stretch']
+    : ['wavy', 'smaller', 'gaps', 'icy'];
+  state.powerItems.push({
+    kind,
+    type: powerTypes[Math.floor(Math.random() * powerTypes.length)],
+    targetSide,
+    x: GAME_WIDTH / 2,
+    y: 40 + Math.random() * (GAME_HEIGHT - 80),
+    vx: kind === 'powerDown' ? (targetSide === 'left' ? -140 : 140) : 0,
+    vy: (Math.random() * 2 - 1) * 100,
+    radius: POWER_ITEM_SIZE,
+  });
+}
+
 function simulateHost(dt) {
-  state.leftY = clampPaddle(state.leftY + hostInputs.host * 350 * dt);
-  state.rightY = clampPaddle(state.rightY + hostInputs.guest * 350 * dt);
+  if (state.winner) {
+    return;
+  }
+  if (Math.random() < dt * 0.18) {
+    spawnPowerItem(Math.random() > 0.5 ? 'powerUp' : 'powerDown');
+  }
+  const leftControl = hasEffect(state.effects.left, 'icy') && hostInputs.host === 0 ? lastIntent.host : hostInputs.host;
+  const rightControl = hasEffect(state.effects.right, 'icy') && hostInputs.guest === 0 ? lastIntent.guest : hostInputs.guest;
+  if (hostInputs.host !== 0) lastIntent.host = hostInputs.host;
+  if (hostInputs.guest !== 0) lastIntent.guest = hostInputs.guest;
+  const leftSpeed = hasEffect(state.effects.left, 'faster') ? 500 : 350;
+  const rightSpeed = hasEffect(state.effects.right, 'faster') ? 500 : 350;
+  state.leftY += leftControl * leftSpeed * dt;
+  state.rightY += rightControl * rightSpeed * dt;
+  state.leftY = hasEffect(state.effects.left, 'stretch')
+    ? ((state.leftY + GAME_HEIGHT) % GAME_HEIGHT)
+    : clampPaddle(state.leftY);
+  state.rightY = hasEffect(state.effects.right, 'stretch')
+    ? ((state.rightY + GAME_HEIGHT) % GAME_HEIGHT)
+    : clampPaddle(state.rightY);
 
   state.ballX += state.ballVX * dt;
   state.ballY += state.ballVY * dt;
@@ -570,13 +670,13 @@ function simulateHost(dt) {
     state.ballY = Math.max(8, Math.min(GAME_HEIGHT - 8, state.ballY));
   }
 
-  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= PADDLE_HEIGHT / 2;
+  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= (hasEffect(state.effects.left, 'bigger') ? PADDLE_HEIGHT * 0.7 : PADDLE_HEIGHT / 2);
   if (leftHit && state.ballVX < 0) {
     state.ballVX *= -1.04;
     state.ballX = 36;
   }
 
-  const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= PADDLE_HEIGHT / 2;
+  const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= (hasEffect(state.effects.right, 'bigger') ? PADDLE_HEIGHT * 0.7 : PADDLE_HEIGHT / 2);
   if (rightHit && state.ballVX > 0) {
     state.ballVX *= -1.04;
     state.ballX = GAME_WIDTH - 36;
@@ -591,6 +691,33 @@ function simulateHost(dt) {
     state.leftScore += 1;
     resetBall(-1);
   }
+  if (state.leftScore >= WIN_SCORE || state.rightScore >= WIN_SCORE) {
+    state.winner = state.leftScore > state.rightScore ? 'left' : 'right';
+  }
+
+  state.powerItems = state.powerItems.filter((item) => {
+    item.x += item.vx * dt;
+    item.y += item.vy * dt;
+    if (item.y < 10 || item.y > GAME_HEIGHT - 10) item.vy *= -1;
+    const paddleY = item.targetSide === 'left' ? state.leftY : state.rightY;
+    const paddleX = item.targetSide === 'left' ? 26 : GAME_WIDTH - 26;
+    if (item.kind === 'powerUp' && Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < PADDLE_HEIGHT / 2) {
+      applyEffect(item.targetSide, item.type);
+      return false;
+    }
+    if (item.kind === 'powerDown') {
+      if (Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < PADDLE_HEIGHT / 2) {
+        item.vx *= -1;
+        item.targetSide = item.targetSide === 'left' ? 'right' : 'left';
+      }
+      const goalHit = (item.targetSide === 'left' && item.x < 0) || (item.targetSide === 'right' && item.x > GAME_WIDTH);
+      if (goalHit) {
+        applyEffect(item.targetSide, item.type);
+        return false;
+      }
+    }
+    return item.x > -40 && item.x < GAME_WIDTH + 40;
+  });
 
   state.tick += 1;
   renderState = { ...state };
@@ -627,16 +754,56 @@ function draw() {
     ctx.fillRect(GAME_WIDTH / 2 - 2, y, 4, 16);
   }
 
-  ctx.fillRect(20, renderState.leftY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
-  ctx.fillRect(GAME_WIDTH - 32, renderState.rightY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
+  const leftPadHeight = hasEffect(renderState.effects.left || {}, 'bigger') ? PADDLE_HEIGHT * 1.4 : hasEffect(renderState.effects.left || {}, 'smaller') ? PADDLE_HEIGHT * 0.65 : PADDLE_HEIGHT;
+  const rightPadHeight = hasEffect(renderState.effects.right || {}, 'bigger') ? PADDLE_HEIGHT * 1.4 : hasEffect(renderState.effects.right || {}, 'smaller') ? PADDLE_HEIGHT * 0.65 : PADDLE_HEIGHT;
+  ctx.fillStyle = renderState.patterns.left || '#e2e8f0';
+  ctx.fillRect(20, renderState.leftY - leftPadHeight / 2, 12, leftPadHeight);
+  if (hasEffect(renderState.effects.left || {}, 'gaps')) {
+    ctx.clearRect(20, renderState.leftY - leftPadHeight * 0.2, 12, leftPadHeight * 0.1);
+  }
+  if (hasEffect(renderState.effects.left || {}, 'minis')) {
+    ctx.fillRect(40, renderState.leftY - 8, 6, 10);
+    ctx.fillRect(40, renderState.leftY + 6, 6, 10);
+  }
+  ctx.fillStyle = renderState.patterns.right || '#e2e8f0';
+  ctx.fillRect(GAME_WIDTH - 32, renderState.rightY - rightPadHeight / 2, 12, rightPadHeight);
+  if (hasEffect(renderState.effects.right || {}, 'gaps')) {
+    ctx.clearRect(GAME_WIDTH - 32, renderState.rightY - rightPadHeight * 0.2, 12, rightPadHeight * 0.1);
+  }
+  if (hasEffect(renderState.effects.right || {}, 'minis')) {
+    ctx.fillRect(GAME_WIDTH - 46, renderState.rightY - 8, 6, 10);
+    ctx.fillRect(GAME_WIDTH - 46, renderState.rightY + 6, 6, 10);
+  }
 
   ctx.beginPath();
   ctx.arc(renderState.ballX, renderState.ballY, 8, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.font = 'bold 40px sans-serif';
+  ctx.fillStyle = '#e2e8f0';
   ctx.fillText(String(renderState.leftScore), GAME_WIDTH / 2 - 80, 48);
   ctx.fillText(String(renderState.rightScore), GAME_WIDTH / 2 + 52, 48);
+  for (const item of renderState.powerItems || []) {
+    ctx.font = '20px serif';
+    const iconMap = { bigger: '🛡️', faster: '⚡', minis: '✨', stretch: '🌀', wavy: '🌊', smaller: '🪶', gaps: '🧩', icy: '❄️' };
+    ctx.fillText(iconMap[item.type] || '⭐', item.x - 10, item.y + 7);
+  }
+  if (renderState.winner) {
+    const winnerLabel = renderState.winner === 'left' ? 'LEFT PLAYER' : 'RIGHT PLAYER';
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+    ctx.fillRect(80, GAME_HEIGHT / 2 - 80, GAME_WIDTH - 160, 160);
+    const g = ctx.createLinearGradient(120, 0, GAME_WIDTH - 120, 0);
+    g.addColorStop(0, '#f472b6');
+    g.addColorStop(0.5, '#fef08a');
+    g.addColorStop(1, '#22d3ee');
+    ctx.fillStyle = g;
+    ctx.font = 'bold 44px cursive';
+    ctx.fillText('CONGRATULATIONS :)', 145, GAME_HEIGHT / 2 - 6);
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText(`${winnerLabel} WINS`, 260, GAME_HEIGHT / 2 + 42);
+    ctx.restore();
+  }
 }
 
 function tick(now) {
@@ -649,6 +816,10 @@ function tick(now) {
   }
 
   if (role === 'host' && status === 'connected') {
+    state.patterns.left = selectedPatternColor();
+    if (!state.patterns.right || state.patterns.right === '#e2e8f0') {
+      state.patterns.right = activePatternChoices[1]?.colors[1] ?? '#93c5fd';
+    }
     simulateHost(dt);
     if (dataChannel && dataChannel.readyState === 'open' && now - lastSnapshotTime > 40) {
       dataChannel.send(JSON.stringify({ type: 'snapshot', state }));
@@ -661,6 +832,9 @@ function tick(now) {
   }
 
   draw();
+  const localSide = role === 'host' ? 'left' : 'right';
+  const wavy = hasEffect(renderState.effects?.[localSide] || {}, 'wavy');
+  canvas.classList.toggle('wavy', wavy);
   requestAnimationFrame(tick);
 }
 
@@ -780,6 +954,9 @@ copyCodeBtn.addEventListener('click', async () => {
     setMessage(`Clipboard unavailable. Room code: ${code}`);
   }
 });
+
+setupPatternSelect();
+patternSelectEl?.addEventListener('focus', setupPatternSelect);
 
 setStatus('disconnected');
 updateControlState();
