@@ -8,6 +8,12 @@ export function resolveSignalingUrl({ currentUrl, baseUri, override }) {
   if (override) return override;
   const protocol = new URL(currentUrl).protocol === 'https:' ? 'wss:' : 'ws:';
 
+  const resolveCodespacesHost = (host) => {
+    const codespacesMatch = host.match(/^(.*)-(\d+)\.app\.github\.dev$/);
+    if (!codespacesMatch) return null;
+    return `${codespacesMatch[1]}-8787.app.github.dev`;
+  };
+
   const fromUrl = (rawUrl) => {
     try {
       const base = new URL(rawUrl);
@@ -20,6 +26,13 @@ export function resolveSignalingUrl({ currentUrl, baseUri, override }) {
         base.port = '8787';
       }
       base.protocol = protocol;
+      const codespacesHost = resolveCodespacesHost(base.host);
+      if (codespacesHost) {
+        base.host = codespacesHost;
+        base.port = '';
+      } else {
+        base.port = '8787';
+      }
       base.pathname = '';
       base.search = '';
       base.hash = '';
@@ -74,4 +87,17 @@ export function isMatchWinner(leftScore, rightScore, winScore = 8) {
 
 export function shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode }) {
   return Boolean(suppressNextSocketCloseMessage && socketCloseCode === 1000);
+}
+
+
+export function messageForSocketClose({ closeCode, signalingUrl, diagnosis }) {
+  if (closeCode === 1006) {
+    if (diagnosis?.reachable) {
+      return `Signaling dropped unexpectedly (1006). Server ${diagnosis.probeUrl} is reachable, so check signaling server logs for socket errors and then retry create/join.`;
+    }
+
+    return `Signaling dropped unexpectedly (1006). Could not reach signaling host at ${signalingUrl} — start/restart signaling and retry create/join.`;
+  }
+
+  return `Signaling connection closed (code ${closeCode || 'unknown'}). Retry create/join.`;
 }
