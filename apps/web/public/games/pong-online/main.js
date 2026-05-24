@@ -1,4 +1,33 @@
-import { generateRoomCode, resolveSignalingUrl, shouldSuppressSocketCloseMessage } from './game-logic.mjs';
+function resolveSignalingUrl({ currentUrl, baseUri, override }) {
+  if (override) return override;
+  const protocol = new URL(currentUrl).protocol === 'https:' ? 'wss:' : 'ws:';
+
+  const fromUrl = (rawUrl) => {
+    try {
+      const base = new URL(rawUrl);
+      if (!base.hostname) return null;
+      base.protocol = protocol;
+      base.port = '8787';
+      base.pathname = '';
+      base.search = '';
+      base.hash = '';
+      return base.toString().replace(/\/$/, '');
+    } catch {
+      return null;
+    }
+  };
+
+  return fromUrl(currentUrl) || fromUrl(baseUri) || `${protocol}//localhost:8787`;
+}
+
+function generateRoomCode(randomValues) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('');
+}
+
+function shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode }) {
+  return Boolean(suppressNextSocketCloseMessage && socketCloseCode === 1000);
+}
 
 const signalingOverride = new URLSearchParams(window.location.search).get('signaling');
 const SIGNALING_URL = resolveSignalingUrl({
