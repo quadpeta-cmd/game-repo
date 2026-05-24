@@ -1,0 +1,6 @@
+{
+  "id": "pong-solo",
+  "name": "Pong Solo",
+  "description": "Single-player Pong versus a randomized AI paddle.",
+  "entry": "index.html"
+}

@@ -2,6 +2,19 @@
   color-scheme: dark;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+.pong-online-body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(56, 189, 248, 0.2), transparent 34%),
+    radial-gradient(circle at 82% 20%, rgba(167, 139, 250, 0.2), transparent 40%),
+    linear-gradient(180deg, #0f172a, #111827);
+  color: #e2e8f0;
+}
+.pong-online-main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 18px;
+}
 body {
   margin: 0;
   background: #0f172a;
@@ -18,11 +31,12 @@ main {
   color: #cbd5e1;
 }
 .controls {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 12px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.92));
+  border: 1px solid #475569;
+  border-radius: 12px;
+  padding: 14px;
   margin-bottom: 12px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.42);
 }
 .row {
   display: flex;
@@ -36,11 +50,20 @@ main {
 }
 button,
 input {
-  background: #0f172a;
+  background: rgba(15, 23, 42, 0.9);
   color: #e2e8f0;
-  border: 1px solid #475569;
+  border: 1px solid #64748b;
   border-radius: 6px;
   padding: 6px 10px;
+}
+button {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #93c5fd;
+  background: rgba(30, 64, 175, 0.22);
 }
 button:disabled {
   opacity: 0.6;
@@ -49,7 +72,33 @@ canvas {
   width: 100%;
   max-width: 800px;
   height: auto;
-  border: 1px solid #334155;
+  border: 1px solid #475569;
   background: #020617;
   display: block;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.45);
+}
+.debug-panel {
+  margin-top: 12px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #020617;
+  padding: 10px;
+}
+.debug-panel h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.debug-panel pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #93c5fd;
+}
+.hidden {
+  display: none;
 }
