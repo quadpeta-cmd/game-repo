@@ -24,6 +24,7 @@ const statusEl = document.getElementById('status');
 const roleEl = document.getElementById('role');
 const roomLabelEl = document.getElementById('room-label');
 const messageEl = document.getElementById('message');
+const signalLogEl = document.getElementById('signal-log');
 
 const createRoomBtn = document.getElementById('create-room');
 const joinRoomBtn = document.getElementById('join-room');
@@ -78,6 +79,12 @@ const MAX_RECONNECT_ATTEMPTS = 3;
 const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
 const MAX_DEBUG_LINES = 300;
 const debugLines = [];
+
+function setSignalLog(text) {
+  if (signalLogEl) {
+    signalLogEl.textContent = text;
+  }
+}
 
 function debugLog(message, data) {
   if (!DEBUG_MODE) {
@@ -216,6 +223,7 @@ function ensureSocket() {
     const signalingUrl = SIGNALING_URLS[signalingUrlIndex] || SIGNALING_URLS[0];
     socket = new WebSocket(signalingUrl);
     debugLog('socket:connect', signalingUrl);
+    setSignalLog(`connect -> ${signalingUrl}`);
   } catch (error) {
     setStatus('disconnected');
     setMessage(error instanceof Error ? 'Invalid signaling URL.' : 'Invalid signaling URL.');
@@ -225,6 +233,7 @@ function ensureSocket() {
 
   socket.addEventListener('open', () => {
     debugLog('socket:open');
+    setSignalLog('open');
     reconnectAttempts = 0;
     if (pendingSignalAction) {
       debugLog('socket:replay-action', pendingSignalAction.type);
@@ -245,6 +254,7 @@ function ensureSocket() {
       return;
     }
     debugLog('socket:message', message.type || 'unknown');
+    setSignalLog(`message:${message.type || 'unknown'}`);
 
     if (message.type === 'room_created') {
       pendingSignalAction = null;
@@ -318,6 +328,7 @@ function ensureSocket() {
 
   socket.addEventListener('close', (event) => {
     debugLog('socket:close', { code: event.code, reason: event.reason, wasClean: event.wasClean });
+    setSignalLog(`close:${event.code || 'unknown'} clean=${event.wasClean ? 'yes' : 'no'}`);
     socket = null;
     setStatus('disconnected');
     if (pendingSignalAction && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -325,6 +336,7 @@ function ensureSocket() {
       signalingUrlIndex = (signalingUrlIndex + 1) % SIGNALING_URLS.length;
       const delayMs = 300 * reconnectAttempts;
       setMessage(`Signaling dropped (code ${event.code || 'unknown'}). Retrying ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}…`);
+      setSignalLog(`retry ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
       window.setTimeout(() => {
         ensureSocket();
       }, delayMs);
@@ -335,6 +347,7 @@ function ensureSocket() {
 
   socket.addEventListener('error', () => {
     debugLog('socket:error');
+    setSignalLog('error');
     setMessage('Signaling error. Check server and retry.');
   });
 }
@@ -713,6 +726,7 @@ copyCodeBtn.addEventListener('click', async () => {
 setStatus('disconnected');
 updateControlState();
 updateRoomLabel();
+setSignalLog('idle');
 if (DEBUG_MODE && debugPanelEl) {
   debugPanelEl.classList.remove('hidden');
   debugLog('debug-mode', 'enabled via ?debug=1');
