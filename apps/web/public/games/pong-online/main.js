@@ -330,7 +330,7 @@ function ensureSocket() {
     debugLog('socket:close');
     socket = null;
     setStatus('disconnected');
-    setMessage('Signaling connection closed. Retry create/join.');
+    setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
   });
 
   socket.addEventListener('error', () => {
