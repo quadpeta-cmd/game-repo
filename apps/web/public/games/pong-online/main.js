@@ -80,6 +80,7 @@ function losingSide(){if(state.leftScore===state.rightScore) return Math.random(
 function winningSide(){return losingSide()==='left'?'right':'left';}
 
 function initPatternPicker(){
+  if (!patternSelectEl) return;
   const options=[...patternLibrary].sort(()=>Math.random()-0.5).slice(0,3);
   options.forEach((p)=>{const opt=document.createElement('option'); opt.value=p.id; opt.textContent=p.label; patternSelectEl.appendChild(opt);});
   selectedPatternId=options[0].id; patternSelectEl.value=selectedPatternId;
@@ -87,7 +88,7 @@ function initPatternPicker(){
 }
 
 function updateRoomLabel(){const displayCode=roomCode||pendingRoomCode; roomLabelEl.textContent=displayCode||'-'; copyCodeBtn.disabled=!displayCode; copyCodeBtn.textContent=displayCode?'Copy invite link':'Copy';}
-function updateControlState(){const active=Boolean(roomCode||pendingRoomCode); leaveRoomBtn.disabled=!active; joinRoomBtn.disabled=active; roomCodeInput.disabled=active; patternSelectEl.disabled=active;}
+function updateControlState(){const active=Boolean(roomCode||pendingRoomCode); leaveRoomBtn.disabled=!active; joinRoomBtn.disabled=active; roomCodeInput.disabled=active; if (patternSelectEl) patternSelectEl.disabled=active;}
 
 function closePeerConnection(){if(dataChannel) dataChannel.close(); dataChannel=null; if(pc){pc.close();} pc=null; remoteDescriptionSet=false; pendingCandidates=[];}
 function disconnectLocal(isRemote=false){closePeerConnection(); if(heartbeatIntervalId){clearInterval(heartbeatIntervalId); heartbeatIntervalId=null;} if(socket&&socket.readyState===WebSocket.OPEN&&roomCode){socket.send(JSON.stringify({type:'leave', roomCode}));} setRole(null); pendingRoomCode=null; if(!isRemote) roomCode=null; updateRoomLabel(); updateControlState(); setStatus('disconnected'); setMessage(isRemote?'Peer disconnected.':'Disconnected.'); state=defaultState(); renderState=defaultState(); latestSnapshot=null; pendingSignalAction=null; reconnectAttempts=0; winnerText=null; powerItems=[]; leftEffects={until:0,kind:null}; rightEffects={until:0,kind:null};}
