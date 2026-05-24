@@ -202,6 +202,11 @@ function onMessage(client, text) {
     return;
   }
 
+  if (message.type === 'heartbeat') {
+    send(client, { type: 'heartbeat_ack', ts: Date.now() });
+    return;
+  }
+
   if (message.type === 'leave') {
     log('leave_requested', { clientId: client.clientId, role: client.role, roomCode: client.roomCode });
     leave(client);
