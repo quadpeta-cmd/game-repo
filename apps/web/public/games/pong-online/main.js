@@ -76,6 +76,8 @@ let latestSnapshot = null;
 let pendingSignalAction = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
+let heartbeatIntervalId = null;
+const HEARTBEAT_INTERVAL_MS = 20000;
 const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
 const MAX_DEBUG_LINES = 300;
 const debugLines = [];
@@ -193,6 +195,10 @@ function closePeerConnection() {
 
 function disconnectLocal(isRemote = false) {
   closePeerConnection();
+  if (heartbeatIntervalId) {
+    window.clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
 
   if (socket && socket.readyState === WebSocket.OPEN && roomCode) {
     socket.send(JSON.stringify({ type: 'leave', roomCode }));
@@ -241,6 +247,14 @@ function ensureSocket() {
     }
     if (status === 'connecting') {
       setMessage('Connected to signaling. Finishing handshake…');
+    }
+    if (!heartbeatIntervalId) {
+      heartbeatIntervalId = window.setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'heartbeat', roomCode }));
+          debugLog('socket:heartbeat');
+        }
+      }, HEARTBEAT_INTERVAL_MS);
     }
   });
 
@@ -341,6 +355,10 @@ function ensureSocket() {
         ensureSocket();
       }, delayMs);
       return;
+    }
+    if (heartbeatIntervalId) {
+      window.clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = null;
     }
     setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
   });
