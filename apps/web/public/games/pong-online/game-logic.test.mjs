@@ -7,10 +7,13 @@ import {
   isMatchWinner,
   losingSide,
   messageForSocketClose,
+  paddleScaleAfterPoint,
   paddleHeightForEffect,
   paddleSpeedForEffect,
+  powerItemHitsPaddle,
   resolveSignalingUrl,
   shouldSuppressSocketCloseMessage,
+  fruitForRound,
   winnerFromOutOfBounds,
   winningSide,
 } from './game-logic.mjs';
@@ -156,4 +159,24 @@ test('messageForSocketClose returns generic message for other codes', () => {
     signalingUrl: 'ws://localhost:8787',
   });
   assert.equal(message, 'Signaling connection closed (code 1001). Retry create/join.');
+});
+
+test('paddleScaleAfterPoint shrinks by 5%', () => {
+  assert.equal(paddleScaleAfterPoint(1), 0.95);
+});
+
+test('paddleScaleAfterPoint respects minimum', () => {
+  assert.equal(paddleScaleAfterPoint(0.41, 0.05, 0.4), 0.4);
+});
+
+test('powerItemHitsPaddle detects collision', () => {
+  assert.equal(powerItemHitsPaddle(20, 100, 26, 100, 80), true);
+  assert.equal(powerItemHitsPaddle(200, 100, 26, 100, 80), false);
+});
+
+test('fruitForRound picks based on random value', () => {
+  const fruits = ['🍎', '🍊', '🍌'];
+  assert.equal(fruitForRound(fruits, 0.0), '🍎');
+  assert.equal(fruitForRound(fruits, 0.5), '🍊');
+  assert.equal(fruitForRound(fruits, 0.9), '🍌');
 });
