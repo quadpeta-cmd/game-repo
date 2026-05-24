@@ -18,6 +18,10 @@ export function initialEnemyShotCooldownRange(level) {
   return level >= 3 ? { min: 6, max: 22 } : { min: 50, max: 130 };
 }
 
+export function maxEnemyPelletsForLevel(level, maxEnemyPellets) {
+  return Math.max(1, Math.floor(maxEnemyPellets / 5));
+}
+
 export function enemyCanFireInLevel3({ enemyY, canvasHeight, shotCooldown, pelletCount, maxEnemyPellets }) {
   const inTopBand = enemyY < canvasHeight * 0.15;
   const hasPelletCapacity = pelletCount < maxEnemyPellets;
