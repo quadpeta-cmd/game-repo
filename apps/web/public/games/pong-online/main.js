@@ -29,6 +29,31 @@ function shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, sock
   return Boolean(suppressNextSocketCloseMessage && socketCloseCode === 1000);
 }
 
+async function diagnoseSignalingClose(signalingUrl, timeoutMs = 1500) {
+  try {
+    const wsUrl = new URL(signalingUrl);
+    const probeProtocol = wsUrl.protocol === 'wss:' ? 'https:' : 'http:';
+    const probeUrl = `${probeProtocol}//${wsUrl.host}/`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      await fetch(probeUrl, {
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      return { reachable: true, probeUrl };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  } catch {
+    return { reachable: false };
+  }
+}
+
 const signalingOverride = new URLSearchParams(window.location.search).get('signaling');
 const SIGNALING_URL = resolveSignalingUrl({
   currentUrl: window.location.href,
@@ -84,6 +109,8 @@ let dataChannel = null;
 let remoteDescriptionSet = false;
 let pendingCandidates = [];
 let suppressNextSocketCloseMessage = false;
+let heartbeatTimer = null;
+const HEARTBEAT_INTERVAL_MS = 15000;
 
 let state = defaultState();
 let renderState = defaultState();
@@ -180,6 +207,25 @@ function randomCode() {
   return generateRoomCode(values);
 }
 
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    debugLog('socket:heartbeat-stop');
+  }
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'heartbeat' }));
+      debugLog('socket:heartbeat-send');
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  debugLog('socket:heartbeat-start', HEARTBEAT_INTERVAL_MS);
+}
+
 function closePeerConnection() {
   if (dataChannel) {
     dataChannel.close();
@@ -198,6 +244,7 @@ function closePeerConnection() {
 }
 
 function disconnectLocal(isRemote = false) {
+  stopHeartbeat();
   closePeerConnection();
 
   if (socket && socket.readyState === WebSocket.OPEN && roomCode) {
@@ -235,6 +282,7 @@ function ensureSocket() {
 
   socket.addEventListener('open', () => {
     debugLog('socket:open');
+    startHeartbeat();
     if (status === 'connecting') {
       setMessage('Connected to signaling. Finishing handshake…');
     }
@@ -312,6 +360,11 @@ function ensureSocket() {
       return;
     }
 
+    if (message.type === 'heartbeat_ack') {
+      debugLog('socket:heartbeat-ack', message.ts || 'no-ts');
+      return;
+    }
+
     if (message.type === 'error') {
       suppressNextSocketCloseMessage = true;
       setMessage(`Error: ${message.message}`);
@@ -319,15 +372,26 @@ function ensureSocket() {
     }
   });
 
-  socket.addEventListener('close', (event) => {
+  socket.addEventListener('close', async (event) => {
     debugLog('socket:close');
+    stopHeartbeat();
     socket = null;
     setStatus('disconnected');
     if (shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode: event.code })) {
       suppressNextSocketCloseMessage = false;
       return;
     }
-    setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
+    const closeCode = event.code || 'unknown';
+    if (closeCode === 1006) {
+      const diagnosis = await diagnoseSignalingClose(SIGNALING_URL);
+      if (diagnosis.reachable) {
+        setMessage(`Signaling dropped unexpectedly (1006). Server ${diagnosis.probeUrl} is reachable, so check signaling server logs for socket errors and then retry create/join.`);
+      } else {
+        setMessage(`Signaling dropped unexpectedly (1006). Could not reach signaling host at ${SIGNALING_URL} — start/restart signaling and retry create/join.`);
+      }
+      return;
+    }
+    setMessage(`Signaling connection closed (code ${closeCode}). Retry create/join.`);
   });
 
   socket.addEventListener('error', () => {
@@ -508,12 +572,12 @@ function simulateHost(dt) {
 
   if (state.ballX < 0) {
     state.rightScore += 1;
-    resetBall(-1);
+    resetBall(1);
   }
 
   if (state.ballX > GAME_WIDTH) {
     state.leftScore += 1;
-    resetBall(1);
+    resetBall(-1);
   }
 
   state.tick += 1;
