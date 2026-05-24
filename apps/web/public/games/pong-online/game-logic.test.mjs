@@ -9,6 +9,7 @@ import {
   paddleHeightForEffect,
   paddleSpeedForEffect,
   resolveSignalingUrl,
+  shouldSuppressSocketCloseMessage,
   winnerFromOutOfBounds,
   winningSide,
 } from './game-logic.mjs';
@@ -109,4 +110,11 @@ test('isMatchWinner right', () => {
 
 test('isMatchWinner none', () => {
   assert.equal(isMatchWinner(7, 7, 8), null);
+});
+
+
+test('shouldSuppressSocketCloseMessage only suppresses normal close after explicit error', () => {
+  assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: true, socketCloseCode: 1000 }), true);
+  assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: false, socketCloseCode: 1000 }), false);
+  assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: true, socketCloseCode: 1006 }), false);
 });

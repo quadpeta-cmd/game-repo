@@ -1,4 +1,4 @@
-import { generateRoomCode, resolveSignalingUrl } from './game-logic.mjs';
+import { generateRoomCode, resolveSignalingUrl, shouldSuppressSocketCloseMessage } from './game-logic.mjs';
 
 const signalingOverride = new URLSearchParams(window.location.search).get('signaling');
 const SIGNALING_URL = resolveSignalingUrl({
@@ -54,6 +54,7 @@ let pc = null;
 let dataChannel = null;
 let remoteDescriptionSet = false;
 let pendingCandidates = [];
+let suppressNextSocketCloseMessage = false;
 
 let state = defaultState();
 let renderState = defaultState();
@@ -283,6 +284,7 @@ function ensureSocket() {
     }
 
     if (message.type === 'error') {
+      suppressNextSocketCloseMessage = true;
       setMessage(`Error: ${message.message}`);
       setStatus('disconnected');
     }
@@ -292,6 +294,10 @@ function ensureSocket() {
     debugLog('socket:close');
     socket = null;
     setStatus('disconnected');
+    if (shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode: event.code })) {
+      suppressNextSocketCloseMessage = false;
+      return;
+    }
     setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
   });
 
