@@ -44,11 +44,20 @@ async function run() {
 
     const host = new WebSocket(WS_URL);
     const guest = new WebSocket(WS_URL);
-    await Promise.all([onceOpen(host), onceOpen(guest)]);
+    const intruder = new WebSocket(WS_URL);
+    await Promise.all([onceOpen(host), onceOpen(guest), onceOpen(intruder)]);
 
     host.send(JSON.stringify({ type: 'create_room', roomCode: 'ROOM01' }));
     const hostCreated = await onceMessage(host);
     if (hostCreated.type !== 'room_created') throw new Error(`expected room_created, got ${hostCreated.type}`);
+
+    intruder.send(JSON.stringify({ type: 'create_room', roomCode: 'ROOM01' }));
+    const duplicateRoom = await onceMessage(intruder);
+    if (duplicateRoom.type !== 'error') throw new Error(`expected duplicate create_room error, got ${duplicateRoom.type}`);
+
+    intruder.send(JSON.stringify({ type: 'join_room', roomCode: 'NOPE99' }));
+    const unknownRoom = await onceMessage(intruder);
+    if (unknownRoom.type !== 'error') throw new Error(`expected unknown room error, got ${unknownRoom.type}`);
 
     guest.send(JSON.stringify({ type: 'join_room', roomCode: 'ROOM01' }));
     const guestJoined = await onceMessage(guest);
@@ -65,7 +74,12 @@ async function run() {
     const hostPeerLeft = await onceMessage(host);
     if (hostPeerLeft.type !== 'peer_left') throw new Error(`expected peer_left, got ${hostPeerLeft.type}`);
 
+    intruder.send(JSON.stringify({ type: 'create_room', roomCode: '' }));
+    const missingRoomCode = await onceMessage(intruder);
+    if (missingRoomCode.type !== 'error') throw new Error(`expected missing room code error, got ${missingRoomCode.type}`);
+
     host.close();
+    intruder.close();
     console.log('PASS signaling smoke test');
   } finally {
     server.kill('SIGTERM');
