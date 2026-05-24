@@ -5,6 +5,10 @@
     "dev:web": "npm --prefix apps/web run dev",
     "dev:signaling": "npm --prefix services/signaling run dev",
     "build": "npm --prefix apps/web run build",
-    "preview": "npm --prefix apps/web run preview"
+    "preview": "npm --prefix apps/web run preview",
+    "test:pong-solo": "node --test apps/web/public/games/pong-solo/game-logic.test.mjs",
+    "test:pong-online": "node --test apps/web/public/games/pong-online/game-logic.test.mjs",
+    "test:dodger": "node --test apps/web/public/games/dodger/game-logic.test.mjs",
+    "test:games": "npm run test:pong-solo && npm run test:pong-online && npm run test:dodger"
   }
 }

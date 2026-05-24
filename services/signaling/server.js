@@ -3,6 +3,12 @@ import { createServer } from 'node:http';
 
 const port = Number(process.env.PORT || 8787);
 const rooms = new Map();
+let nextClientId = 1;
+
+function log(event, details = {}) {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${event} ${JSON.stringify(details)}`);
+}
 
 function wsAcceptKey(key) {
   return createHash('sha1')
@@ -112,7 +118,10 @@ function relayToPeer(client, payload) {
   if (!room) return;
 
   const peer = client.role === 'host' ? room.guest : room.host;
-  if (peer) send(peer, payload);
+  if (peer) {
+    log('relay', { fromClientId: client.clientId, toClientId: peer.clientId, type: payload.type, roomCode: client.roomCode });
+    send(peer, payload);
+  }
 }
 
 function leave(client) {
@@ -164,6 +173,7 @@ function onMessage(client, text) {
     client.roomCode = code;
     client.role = 'host';
     send(client, { type: 'room_created', roomCode: code });
+    log('room_created', { roomCode: code, hostClientId: client.clientId });
     return;
   }
 
@@ -183,6 +193,7 @@ function onMessage(client, text) {
     client.role = 'guest';
     send(client, { type: 'room_joined', roomCode: code });
     send(room.host, { type: 'peer_joined', roomCode: code });
+    log('room_joined', { roomCode: code, hostClientId: room.host.clientId, guestClientId: client.clientId });
     return;
   }
 
@@ -191,7 +202,13 @@ function onMessage(client, text) {
     return;
   }
 
+  if (message.type === 'heartbeat') {
+    send(client, { type: 'heartbeat_ack', ts: Date.now() });
+    return;
+  }
+
   if (message.type === 'leave') {
+    log('leave_requested', { clientId: client.clientId, role: client.role, roomCode: client.roomCode });
     leave(client);
     return;
   }
@@ -222,6 +239,9 @@ server.on('upgrade', (req, socket) => {
   socket.roomCode = null;
   socket.role = null;
   socket.frameBuffer = Buffer.alloc(0);
+  socket.clientId = nextClientId;
+  nextClientId += 1;
+  log('socket_connected', { clientId: socket.clientId, remoteAddress: socket.remoteAddress });
 
   socket.on('data', (chunk) => {
     try {
@@ -231,6 +251,7 @@ server.on('upgrade', (req, socket) => {
 
       for (const frame of frames) {
         if (frame.close) {
+          log('socket_close_frame', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
           leave(socket);
           socket.end();
           return;
@@ -246,16 +267,26 @@ server.on('upgrade', (req, socket) => {
         }
       }
     } catch {
+      log('socket_parse_error', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
       leave(socket);
       socket.destroy();
     }
   });
 
-  socket.on('close', () => leave(socket));
-  socket.on('end', () => leave(socket));
-  socket.on('error', () => leave(socket));
+  socket.on('close', () => {
+    log('socket_closed', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
+    leave(socket);
+  });
+  socket.on('end', () => {
+    log('socket_end', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
+    leave(socket);
+  });
+  socket.on('error', (error) => {
+    log('socket_error', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role, message: error.message });
+    leave(socket);
+  });
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`Signaling server listening on ws://0.0.0.0:${port}`);
+  log('server_listening', { url: `ws://0.0.0.0:${port}` });
 });
