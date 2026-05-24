@@ -42,6 +42,7 @@ Vite starts the hub app, and the default page at `http://localhost:5173/` is the
 To see the Pong Online screen used in validation screenshots, open:
 
 - `http://localhost:5173/play/pong-online` (hub Play route, game rendered inside iframe)
+- `http://localhost:5173/play/pong-online?debug=1` (same route, with in-game debug panel/logs enabled)
 
 Note: opening `http://localhost:5173/games/pong-online/index.html` loads the raw game page directly (not the hub Play wrapper), so it will look different from hub screenshots.
 
