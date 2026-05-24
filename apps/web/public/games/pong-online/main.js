@@ -54,6 +54,8 @@ const joinRoomBtn = document.getElementById('join-room');
 const leaveRoomBtn = document.getElementById('leave-room');
 const copyCodeBtn = document.getElementById('copy-code');
 const roomCodeInput = document.getElementById('room-code');
+const debugPanelEl = document.getElementById('debug-panel');
+const debugLogEl = document.getElementById('debug-log');
 
 const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
@@ -94,6 +96,38 @@ let keys = { up: false, down: false };
 let lastSimTime = performance.now();
 let lastSnapshotTime = 0;
 let latestSnapshot = null;
+const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
+const MAX_DEBUG_LINES = 300;
+const debugLines = [];
+
+function debugLog(message, data) {
+  if (!DEBUG_MODE) {
+    return;
+  }
+
+  const stamp = new Date().toISOString().slice(11, 23);
+  let suffix = '';
+  if (typeof data !== 'undefined') {
+    if (typeof data === 'string') {
+      suffix = ` ${data}`;
+    } else {
+      try {
+        suffix = ` ${JSON.stringify(data)}`;
+      } catch {
+        suffix = ' [unserializable data]';
+      }
+    }
+  }
+  const line = `[${stamp}] ${message}${suffix}`;
+  debugLines.push(line);
+  if (debugLines.length > MAX_DEBUG_LINES) {
+    debugLines.shift();
+  }
+  if (debugLogEl) {
+    debugLogEl.textContent = debugLines.join('\n');
+  }
+  console.debug(`[pong-online] ${message}`, data ?? '');
+}
 
 async function createAndSendOffer() {
   if (!pc || !socket || socket.readyState !== WebSocket.OPEN || !roomCode) {
@@ -108,15 +142,18 @@ async function createAndSendOffer() {
 function setStatus(next) {
   status = next;
   statusEl.textContent = status;
+  debugLog('status', next);
 }
 
 function setMessage(text) {
   messageEl.textContent = text;
+  debugLog('message', text);
 }
 
 function setRole(nextRole) {
   role = nextRole;
   roleEl.textContent = role ? `(${role})` : '-';
+  debugLog('role', role ?? '-');
 }
 
 function updateRoomLabel() {
@@ -196,6 +233,7 @@ function ensureSocket() {
 
   try {
     socket = new WebSocket(SIGNALING_URL);
+    debugLog('socket:connect', SIGNALING_URL);
   } catch (error) {
     setStatus('disconnected');
     setMessage(error instanceof Error ? `Invalid signaling URL: ${SIGNALING_URL}` : 'Invalid signaling URL.');
@@ -204,13 +242,22 @@ function ensureSocket() {
   }
 
   socket.addEventListener('open', () => {
+    debugLog('socket:open');
     if (status === 'connecting') {
       setMessage('Connected to signaling. Finishing handshake…');
     }
   });
 
   socket.addEventListener('message', async (event) => {
-    const message = JSON.parse(event.data);
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      debugLog('socket:bad-json', String(event.data));
+      setMessage('Received invalid signaling message.');
+      return;
+    }
+    debugLog('socket:message', message.type || 'unknown');
 
     if (message.type === 'room_created') {
       pendingRoomCode = null;
@@ -280,12 +327,14 @@ function ensureSocket() {
   });
 
   socket.addEventListener('close', () => {
+    debugLog('socket:close');
     socket = null;
     setStatus('disconnected');
     setMessage('Signaling connection closed. Retry create/join.');
   });
 
   socket.addEventListener('error', () => {
+    debugLog('socket:error');
     setMessage('Signaling error. Check server and retry.');
   });
 }
@@ -361,9 +410,11 @@ async function flushPendingCandidates() {
 async function createPeer(isHost) {
   closePeerConnection();
   pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  debugLog('webrtc:peer-created', { isHost });
 
   pc.onicecandidate = (event) => {
     if (event.candidate && socket && socket.readyState === WebSocket.OPEN && roomCode) {
+      debugLog('webrtc:ice-local-candidate');
       socket.send(JSON.stringify({
         type: 'ice_candidate',
         roomCode,
@@ -401,10 +452,12 @@ async function createPeer(isHost) {
 
 function setupDataChannel(channel) {
   channel.onopen = () => {
+    debugLog('webrtc:datachannel-open', channel.label);
     setStatus('connected');
   };
 
   channel.onclose = () => {
+    debugLog('webrtc:datachannel-close', channel.label);
     setStatus('disconnected');
     setMessage('Data channel closed. Leave and reconnect.');
   };
@@ -573,6 +626,7 @@ window.addEventListener('keyup', (event) => {
 });
 
 createRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:create-room-click');
   if (roomCode || pendingRoomCode) {
     disconnectLocal(false);
   }
@@ -597,6 +651,7 @@ createRoomBtn.addEventListener('click', async () => {
 });
 
 joinRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:join-room-click');
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     setMessage('Enter a room code first.');
@@ -624,6 +679,7 @@ joinRoomBtn.addEventListener('click', async () => {
 });
 
 leaveRoomBtn.addEventListener('click', () => {
+  debugLog('ui:leave-room-click');
   disconnectLocal(false);
 });
 
@@ -644,4 +700,17 @@ copyCodeBtn.addEventListener('click', async () => {
 setStatus('disconnected');
 updateControlState();
 updateRoomLabel();
+if (DEBUG_MODE && debugPanelEl) {
+  debugPanelEl.classList.remove('hidden');
+  debugLog('debug-mode', 'enabled via ?debug=1');
+  debugLog('signaling-url', SIGNALING_URL);
+}
+window.addEventListener('error', (event) => {
+  debugLog('window:error', event.message || 'unknown');
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  debugLog('window:unhandledrejection', reason);
+});
 requestAnimationFrame(tick);
+    debugLog('webrtc:connectionState', pc.connectionState);
