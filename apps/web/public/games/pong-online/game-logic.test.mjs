@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {
   buildInviteLink,
   clampPaddleY,
+  generateRoomCode,
   isMatchWinner,
   losingSide,
   paddleHeightForEffect,
   paddleSpeedForEffect,
+  resolveSignalingUrl,
   winnerFromOutOfBounds,
   winningSide,
 } from './game-logic.mjs';
@@ -14,6 +16,29 @@ import {
 test('buildInviteLink sets room query param', () => {
   const url = buildInviteLink('https://example.com/play/pong-online?debug=1', 'ABCD12');
   assert.equal(new URL(url).searchParams.get('room'), 'ABCD12');
+});
+
+test('resolveSignalingUrl prefers explicit override', () => {
+  const value = resolveSignalingUrl({
+    currentUrl: 'https://example.com/play/pong-online',
+    baseUri: 'https://fallback.example.com/app/',
+    override: 'wss://custom.example/ws',
+  });
+  assert.equal(value, 'wss://custom.example/ws');
+});
+
+test('resolveSignalingUrl uses current URL host + ws port', () => {
+  const value = resolveSignalingUrl({
+    currentUrl: 'https://play.example.com/games/pong-online?room=ABCD',
+    baseUri: 'https://fallback.example.com/app/',
+    override: null,
+  });
+  assert.equal(value, 'wss://play.example.com:8787');
+});
+
+test('generateRoomCode maps values into allowed alphabet', () => {
+  const code = generateRoomCode(Uint32Array.from([0, 1, 2, 30, 31, 32]));
+  assert.equal(code, 'ABC89A');
 });
 
 test('winnerFromOutOfBounds returns right when ball exits left', () => {
