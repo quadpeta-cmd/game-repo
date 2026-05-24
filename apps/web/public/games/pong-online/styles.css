@@ -102,3 +102,27 @@ canvas {
 .hidden {
   display: none;
 }
+.debug-panel {
+  margin-top: 12px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #020617;
+  padding: 10px;
+}
+.debug-panel h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.debug-panel pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #93c5fd;
+}
+.hidden {
+  display: none;
+}

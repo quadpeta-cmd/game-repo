@@ -35,132 +35,381 @@ const roomCodeInput = document.getElementById('room-code');
 const debugPanelEl = document.getElementById('debug-panel');
 const debugLogEl = document.getElementById('debug-log');
 
-const patternLibrary = [
-  { id: 'flowers', label: '🌸 Flower Bloom', colors: ['#f472b6', '#f9a8d4', '#fbcfe8'] },
-  { id: 'aurora', label: '🌌 Aurora', colors: ['#22d3ee', '#06b6d4', '#0ea5e9'] },
-  { id: 'sunset', label: '🌇 Sunset', colors: ['#fb7185', '#f97316', '#facc15'] },
-  { id: 'forest', label: '🌿 Forest', colors: ['#22c55e', '#4ade80', '#86efac'] },
-  { id: 'violet', label: '💜 Violet', colors: ['#a78bfa', '#8b5cf6', '#c4b5fd'] },
-];
+const GAME_WIDTH = canvas.width;
+const GAME_HEIGHT = canvas.height;
+const PADDLE_HEIGHT = 90;
 
-function defaultState() {
-  return { leftY: GAME_HEIGHT / 2, rightY: GAME_HEIGHT / 2, ballX: GAME_WIDTH / 2, ballY: GAME_HEIGHT / 2, ballVX: 280, ballVY: 160, leftScore: 0, rightScore: 0, tick: 0 };
-}
+canvas.addEventListener('pointerdown', () => {
+  canvas.focus();
+});
 
-let role = null, status = 'disconnected', roomCode = null, pendingRoomCode = null, socket = null, pc = null, dataChannel = null;
-let remoteDescriptionSet = false, pendingCandidates = [];
-let state = defaultState(), renderState = defaultState();
-let hostInputs = { host: 0, guest: 0 }, guestInput = 0;
-let keys = { up: false, down: false }, lastSimTime = performance.now(), lastSnapshotTime = 0, latestSnapshot = null;
-let pendingSignalAction = null, reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 3;
-let heartbeatIntervalId = null;
-const DEBUG_MODE = params.get('debug') === '1';
+
+const defaultState = () => ({
+  leftY: GAME_HEIGHT / 2,
+  rightY: GAME_HEIGHT / 2,
+  ballX: GAME_WIDTH / 2,
+  ballY: GAME_HEIGHT / 2,
+  ballVX: 280,
+  ballVY: 160,
+  leftScore: 0,
+  rightScore: 0,
+  tick: 0,
+});
+
+let role = null;
+let status = 'disconnected';
+let roomCode = null;
+let pendingRoomCode = null;
+let socket = null;
+let pc = null;
+let dataChannel = null;
+let remoteDescriptionSet = false;
+let pendingCandidates = [];
+
+let state = defaultState();
+let renderState = defaultState();
+let hostInputs = { host: 0, guest: 0 };
+let guestInput = 0;
+let keys = { up: false, down: false };
+let lastSimTime = performance.now();
+let lastSnapshotTime = 0;
+let latestSnapshot = null;
+const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
+const MAX_DEBUG_LINES = 300;
 const debugLines = [];
-let winnerText = null;
-let powerItems = [];
-let selectedPatternId = patternLibrary[0].id;
-let leftEffects = { until: 0, kind: null };
-let rightEffects = { until: 0, kind: null };
 
-function setSignalLog(text) { if (signalLogEl) signalLogEl.textContent = text; }
-function debugLog(message, data) { if (!DEBUG_MODE) return; const stamp = new Date().toISOString().slice(11, 23); const line = `[${stamp}] ${message}${typeof data !== 'undefined' ? ` ${JSON.stringify(data)}` : ''}`; debugLines.push(line); if (debugLines.length > 300) debugLines.shift(); if (debugLogEl) debugLogEl.textContent = debugLines.join('\n'); }
-function setStatus(next) { status = next; statusEl.textContent = status; }
-function setMessage(text) { messageEl.textContent = text; }
-function setRole(nextRole) { role = nextRole; roleEl.textContent = role ? `(${role})` : '-'; }
-function patternById(id) { return patternLibrary.find((p) => p.id === id) || patternLibrary[0]; }
-function clampPaddle(y) { return Math.max(BASE_PADDLE_HEIGHT / 2, Math.min(GAME_HEIGHT - BASE_PADDLE_HEIGHT / 2, y)); }
-function randomCode() { const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const values = new Uint32Array(6); window.crypto.getRandomValues(values); return Array.from(values).map((v) => alphabet[v % alphabet.length]).join(''); }
-function intersects(a,b){return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;}
-function effectActive(e){return e.kind && e.until > performance.now();}
-function paddleHeightFor(side){const e = side==='left'?leftEffects:rightEffects; if(!effectActive(e)) return BASE_PADDLE_HEIGHT; if(e.kind==='big') return BASE_PADDLE_HEIGHT*1.45; if(e.kind==='small') return BASE_PADDLE_HEIGHT*0.7; return BASE_PADDLE_HEIGHT;}
-function paddleSpeedFor(side){const e = side==='left'?leftEffects:rightEffects; return effectActive(e)&&e.kind==='speed'?480:350;}
-function applyEffect(side,kind){const t = side==='left'?leftEffects:rightEffects; t.kind=kind;t.until=performance.now()+EFFECT_MS;}
-function losingSide(){if(state.leftScore===state.rightScore) return Math.random()<0.5?'left':'right'; return state.leftScore<state.rightScore?'left':'right';}
-function winningSide(){return losingSide()==='left'?'right':'left';}
+function debugLog(message, data) {
+  if (!DEBUG_MODE) {
+    return;
+  }
 
-function initPatternPicker(){
-  if (!patternSelectEl) return;
-  const options=[...patternLibrary].sort(()=>Math.random()-0.5).slice(0,3);
-  options.forEach((p)=>{const opt=document.createElement('option'); opt.value=p.id; opt.textContent=p.label; patternSelectEl.appendChild(opt);});
-  selectedPatternId=options[0].id; patternSelectEl.value=selectedPatternId;
-  patternSelectEl.addEventListener('change',()=>{selectedPatternId=patternSelectEl.value; if(dataChannel?.readyState==='open'){dataChannel.send(JSON.stringify({type:'pattern', value:selectedPatternId}));}});
+  const stamp = new Date().toISOString().slice(11, 23);
+  let suffix = '';
+  if (typeof data !== 'undefined') {
+    if (typeof data === 'string') {
+      suffix = ` ${data}`;
+    } else {
+      try {
+        suffix = ` ${JSON.stringify(data)}`;
+      } catch {
+        suffix = ' [unserializable data]';
+      }
+    }
+  }
+  const line = `[${stamp}] ${message}${suffix}`;
+  debugLines.push(line);
+  if (debugLines.length > MAX_DEBUG_LINES) {
+    debugLines.shift();
+  }
+  if (debugLogEl) {
+    debugLogEl.textContent = debugLines.join('\n');
+  }
+  console.debug(`[pong-online] ${message}`, data ?? '');
 }
 
-function updateRoomLabel(){const displayCode=roomCode||pendingRoomCode; roomLabelEl.textContent=displayCode||'-'; copyCodeBtn.disabled=!displayCode; copyCodeBtn.textContent=displayCode?'Copy invite link':'Copy';}
-function updateControlState(){const active=Boolean(roomCode||pendingRoomCode); leaveRoomBtn.disabled=!active; joinRoomBtn.disabled=active; roomCodeInput.disabled=active; if (patternSelectEl) patternSelectEl.disabled=active;}
+async function createAndSendOffer() {
+  if (!pc || !socket || socket.readyState !== WebSocket.OPEN || !roomCode) {
+    return;
+  }
 
-function closePeerConnection(){if(dataChannel) dataChannel.close(); dataChannel=null; if(pc){pc.close();} pc=null; remoteDescriptionSet=false; pendingCandidates=[];}
-function disconnectLocal(isRemote=false){closePeerConnection(); if(heartbeatIntervalId){clearInterval(heartbeatIntervalId); heartbeatIntervalId=null;} if(socket&&socket.readyState===WebSocket.OPEN&&roomCode){socket.send(JSON.stringify({type:'leave', roomCode}));} setRole(null); pendingRoomCode=null; if(!isRemote) roomCode=null; updateRoomLabel(); updateControlState(); setStatus('disconnected'); setMessage(isRemote?'Peer disconnected.':'Disconnected.'); state=defaultState(); renderState=defaultState(); latestSnapshot=null; pendingSignalAction=null; reconnectAttempts=0; winnerText=null; powerItems=[]; leftEffects={until:0,kind:null}; rightEffects={until:0,kind:null};}
-
-function ensureSocket(){
-  if(socket&&(socket.readyState===WebSocket.OPEN||socket.readyState===WebSocket.CONNECTING)) return;
-  const signalingUrl = SIGNALING_URLS[signalingUrlIndex]||SIGNALING_URLS[0];
-  socket = new WebSocket(signalingUrl); setSignalLog(`connect -> ${signalingUrl}`);
-  socket.addEventListener('open',()=>{setSignalLog('open'); reconnectAttempts=0; if(pendingSignalAction) socket.send(JSON.stringify(pendingSignalAction)); if(!heartbeatIntervalId){heartbeatIntervalId=setInterval(()=>{if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:'heartbeat', roomCode}));},20000);} });
-  socket.addEventListener('message', async (event)=>{const message=JSON.parse(event.data); setSignalLog(`message:${message.type||'unknown'}`);
-    if(message.type==='room_created'){pendingSignalAction=null; pendingRoomCode=null; roomCode=message.roomCode; updateRoomLabel(); updateControlState(); setRole('host'); await createPeer(true); setStatus('waiting'); return;}
-    if(message.type==='room_joined'){pendingSignalAction=null; roomCode=message.roomCode; updateRoomLabel(); updateControlState(); setRole('guest'); await createPeer(false); return;}
-    if(message.type==='peer_joined'&&role==='host'){setStatus('connecting'); const offer=await pc.createOffer(); await pc.setLocalDescription(offer); socket.send(JSON.stringify({type:'offer',roomCode,offer})); return;}
-    if(message.type==='offer'&&role==='guest'&&pc){await pc.setRemoteDescription(new RTCSessionDescription(message.offer)); remoteDescriptionSet=true; await flushPendingCandidates(); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); socket.send(JSON.stringify({type:'answer',roomCode,answer})); return;}
-    if(message.type==='answer'&&role==='host'&&pc){await pc.setRemoteDescription(new RTCSessionDescription(message.answer)); remoteDescriptionSet=true; await flushPendingCandidates(); return;}
-    if(message.type==='ice_candidate'&&pc){ if(!remoteDescriptionSet) pendingCandidates.push(message.candidate); else await pc.addIceCandidate(new RTCIceCandidate(message.candidate)); return;}
-    if(message.type==='peer_left'){disconnectLocal(true); return;}
-    if(message.type==='error'){pendingSignalAction=null; setStatus('disconnected'); setMessage(`Error: ${message.message}`);} });
-  socket.addEventListener('close',(event)=>{setSignalLog(`close:${event.code}`); socket=null; setStatus('disconnected'); if(pendingSignalAction&&reconnectAttempts<MAX_RECONNECT_ATTEMPTS){reconnectAttempts+=1; signalingUrlIndex=(signalingUrlIndex+1)%SIGNALING_URLS.length; setTimeout(ensureSocket,300*reconnectAttempts); return;} if(heartbeatIntervalId){clearInterval(heartbeatIntervalId); heartbeatIntervalId=null;} setMessage(`Signaling connection closed (code ${event.code||'unknown'}). Retry create/join.`);});
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.send(JSON.stringify({ type: 'offer', roomCode, offer }));
 }
 
-function waitForSocketOpen(){return new Promise((resolve,reject)=>{if(!socket) return reject(new Error('Signaling socket not initialized')); if(socket.readyState===WebSocket.OPEN) return resolve(); if(socket.readyState!==WebSocket.CONNECTING) return reject(new Error('Signaling socket unavailable')); socket.addEventListener('open',resolve,{once:true}); socket.addEventListener('error',()=>reject(new Error('Signaling connection error')),{once:true}); socket.addEventListener('close',()=>reject(new Error('Signaling connection closed')),{once:true});});}
-async function flushPendingCandidates(){if(!pc||!remoteDescriptionSet) return; while(pendingCandidates.length){await pc.addIceCandidate(new RTCIceCandidate(pendingCandidates.shift()));}}
-
-async function createPeer(isHost){
-  closePeerConnection(); pc = new RTCPeerConnection({iceServers: ICE_SERVERS});
-  pc.onicecandidate=(event)=>{if(event.candidate&&socket?.readyState===WebSocket.OPEN&&roomCode){socket.send(JSON.stringify({type:'ice_candidate',roomCode,candidate:event.candidate}));}};
-  pc.onconnectionstatechange=()=>{if(pc.connectionState==='connected'){setStatus('connected');} else if(['disconnected','failed','closed'].includes(pc.connectionState)){setStatus('disconnected');}};
-  if(isHost){dataChannel=pc.createDataChannel('pong'); setupDataChannel(dataChannel);} else {pc.ondatachannel=(event)=>{dataChannel=event.channel; setupDataChannel(dataChannel);};}
+function setStatus(next) {
+  status = next;
+  statusEl.textContent = status;
+  debugLog('status', next);
 }
 
-function setupDataChannel(channel){
-  channel.onopen=()=>setStatus('connected');
-  channel.onmessage=(event)=>{const msg=JSON.parse(event.data); if(msg.type==='input'&&role==='host') hostInputs.guest=Number(msg.value)||0; if(msg.type==='snapshot'&&role==='guest') latestSnapshot=msg.state; if(msg.type==='pattern') selectedPatternId=msg.value;};
+function setMessage(text) {
+  messageEl.textContent = text;
+  debugLog('message', text);
 }
 
-function maybeSpawnItems(){
-  if(state.tick%180!==0||winnerText) return;
-  if(Math.random()<0.55){
-    powerItems.push({type:'up',targetSide:losingSide(),effect:['big','speed','mini'][Math.floor(Math.random()*3)],x:GAME_WIDTH/2,y:70+Math.random()*(GAME_HEIGHT-140),vx:(Math.random()<0.5?-1:1)*2,vy:(Math.random()-0.5)*2,icon:'⬆️'});
+function setRole(nextRole) {
+  role = nextRole;
+  roleEl.textContent = role ? `(${role})` : '-';
+  debugLog('role', role ?? '-');
+}
+
+function updateRoomLabel() {
+  const displayCode = roomCode || pendingRoomCode;
+  roomLabelEl.textContent = displayCode || '-';
+  copyCodeBtn.disabled = !displayCode;
+}
+
+function updateControlState() {
+  const active = Boolean(roomCode || pendingRoomCode);
+  leaveRoomBtn.disabled = !active;
+  createRoomBtn.disabled = false;
+  joinRoomBtn.disabled = active;
+  roomCodeInput.disabled = active;
+}
+
+function randomCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const values = new Uint32Array(6);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(values);
   } else {
     powerItems.push({type:'down',targetSide:winningSide(),effect:['wavy','small','gaps'][Math.floor(Math.random()*3)],x:GAME_WIDTH/2,y:70+Math.random()*(GAME_HEIGHT-140),vx:(winningSide()==='left'?-2:2),vy:(Math.random()-0.5)*2,icon:'⬇️'});
   }
 }
 
-function simulateHost(dt){
-  if(winnerText) return;
-  state.leftY = clampPaddle(state.leftY + hostInputs.host * paddleSpeedFor('left') * dt);
-  state.rightY = clampPaddle(state.rightY + hostInputs.guest * paddleSpeedFor('right') * dt);
-  state.ballX += state.ballVX * dt; state.ballY += state.ballVY * dt;
-  if(state.ballY<8||state.ballY>GAME_HEIGHT-8){state.ballVY*=-1; state.ballY=Math.max(8,Math.min(GAME_HEIGHT-8,state.ballY));}
-  const leftH=paddleHeightFor('left'); const rightH=paddleHeightFor('right');
-  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= leftH/2;
-  if(leftHit&&state.ballVX<0){state.ballVX*=-1.04; state.ballX=36;}
-  const rightHit = state.ballX > GAME_WIDTH-36 && Math.abs(state.ballY - state.rightY) <= rightH/2;
-  if(rightHit&&state.ballVX>0){state.ballVX*=-1.04; state.ballX=GAME_WIDTH-36;}
-  if(winnerFromOutOfBounds(state.ballX,GAME_WIDTH)==='right'){state.rightScore+=1; resetBall(1);} if(winnerFromOutOfBounds(state.ballX,GAME_WIDTH)==='left'){state.leftScore+=1; resetBall(-1);} if(state.leftScore>=WIN_SCORE||state.rightScore>=WIN_SCORE){winnerText=state.leftScore>=WIN_SCORE?'Left player':'Right player'; setStatus('finished');}
-  state.tick += 1; maybeSpawnItems(); updatePowerItems(); renderState={...state};
+function ensureSocket() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  try {
+    socket = new WebSocket(SIGNALING_URL);
+    debugLog('socket:connect', SIGNALING_URL);
+  } catch (error) {
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `Invalid signaling URL: ${SIGNALING_URL}` : 'Invalid signaling URL.');
+    socket = null;
+    return;
+  }
+
+  socket.addEventListener('open', () => {
+    debugLog('socket:open');
+    if (status === 'connecting') {
+      setMessage('Connected to signaling. Finishing handshake…');
+    }
+  });
+
+  socket.addEventListener('message', async (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      debugLog('socket:bad-json', String(event.data));
+      setMessage('Received invalid signaling message.');
+      return;
+    }
+    debugLog('socket:message', message.type || 'unknown');
+
+    if (message.type === 'room_created') {
+      pendingRoomCode = null;
+      roomCode = message.roomCode;
+      updateRoomLabel();
+      updateControlState();
+      setRole('host');
+      await createPeer(true);
+      setStatus('waiting');
+      setMessage('Room ready. Share the code and wait for a guest…');
+      return;
+    }
+
+    if (message.type === 'room_joined') {
+      roomCode = message.roomCode;
+      updateRoomLabel();
+      updateControlState();
+      setRole('guest');
+      await createPeer(false);
+      return;
+    }
+
+    if (message.type === 'peer_joined' && role === 'host') {
+      setStatus('connecting');
+      setMessage('Guest joined. Starting WebRTC handshake…');
+      await createAndSendOffer();
+      return;
+    }
+
+    if (message.type === 'offer' && role === 'guest' && pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+      remoteDescriptionSet = true;
+      await flushPendingCandidates();
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.send(JSON.stringify({ type: 'answer', roomCode, answer }));
+      return;
+    }
+
+    if (message.type === 'answer' && role === 'host' && pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+      remoteDescriptionSet = true;
+      await flushPendingCandidates();
+      return;
+    }
+
+    if (message.type === 'ice_candidate' && pc) {
+      if (!remoteDescriptionSet) {
+        pendingCandidates.push(message.candidate);
+      } else {
+        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+      }
+      return;
+    }
+
+    if (message.type === 'peer_left') {
+      setStatus('disconnected');
+      setMessage('Peer left the room. You can reconnect.');
+      closePeerConnection();
+      return;
+    }
+
+    if (message.type === 'error') {
+      setMessage(`Error: ${message.message}`);
+      setStatus('disconnected');
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    debugLog('socket:close');
+    socket = null;
+    setStatus('disconnected');
+    setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
+  });
+
+  socket.addEventListener('error', () => {
+    debugLog('socket:error');
+    setMessage('Signaling error. Check server and retry.');
+  });
 }
 
-function updatePowerItems(){
-  const leftPad={x:20,y:state.leftY-paddleHeightFor('left')/2,w:12,h:paddleHeightFor('left')};
-  const rightPad={x:GAME_WIDTH-32,y:state.rightY-paddleHeightFor('right')/2,w:12,h:paddleHeightFor('right')};
-  for(const item of powerItems){item.x+=item.vx; item.y+=item.vy; if(item.y<20||item.y>GAME_HEIGHT-20) item.vy*=-1;
-    if(item.type==='up'){
-      const pad=item.targetSide==='left'?leftPad:rightPad;
-      if(intersects({x:item.x-10,y:item.y-10,w:20,h:20},pad)){applyEffect(item.targetSide,item.effect); item.dead=true;}
-    } else {
-      if(item.x<8){applyEffect('left',item.effect); item.dead=true;} else if(item.x>GAME_WIDTH-8){applyEffect('right',item.effect); item.dead=true;}
-      if(intersects({x:item.x-10,y:item.y-10,w:20,h:20},leftPad)) item.vx=Math.abs(item.vx);
-      if(intersects({x:item.x-10,y:item.y-10,w:20,h:20},rightPad)) item.vx=-Math.abs(item.vx);
+function waitForSocketOpen() {
+  return new Promise((resolve, reject) => {
+    if (!socket) {
+      reject(new Error('Signaling socket not initialized'));
+      return;
     }
+
+    if (socket.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+
+    if (socket.readyState !== WebSocket.CONNECTING) {
+      reject(new Error('Signaling socket unavailable'));
+      return;
+    }
+
+    let settled = false;
+
+    const cleanup = () => {
+      socket?.removeEventListener('open', handleOpen);
+      socket?.removeEventListener('error', handleError);
+      socket?.removeEventListener('close', handleClose);
+    };
+
+    const finish = (fn) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      fn();
+    };
+
+    const handleOpen = () => {
+      finish(resolve);
+    };
+
+    const handleError = () => {
+      finish(() => reject(new Error('Signaling connection error')));
+    };
+
+    const handleClose = () => {
+      finish(() => reject(new Error('Signaling connection closed')));
+    };
+
+    socket.addEventListener('open', handleOpen);
+    socket.addEventListener('error', handleError);
+    socket.addEventListener('close', handleClose);
+  });
+}
+
+async function flushPendingCandidates() {
+  if (!pc || !remoteDescriptionSet || pendingCandidates.length === 0) {
+    return;
+  }
+
+  while (pendingCandidates.length > 0) {
+    const candidate = pendingCandidates.shift();
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+}
+
+async function createPeer(isHost) {
+  closePeerConnection();
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  debugLog('webrtc:peer-created', { isHost });
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate && socket && socket.readyState === WebSocket.OPEN && roomCode) {
+      debugLog('webrtc:ice-local-candidate');
+      socket.send(JSON.stringify({
+        type: 'ice_candidate',
+        roomCode,
+        candidate: event.candidate,
+      }));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (!pc) {
+      return;
+    }
+    debugLog('webrtc:connectionState', pc.connectionState);
+
+    if (pc.connectionState === 'connected') {
+      setStatus('connected');
+      setMessage(`Connected as ${role}. ${role === 'host' ? 'You run simulation.' : 'Receiving host snapshots.'}`);
+    } else if (pc.connectionState === 'connecting') {
+      setStatus('connecting');
+    } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+      setStatus('disconnected');
+      setMessage('WebRTC disconnected. Leave and rejoin room.');
+    }
+  };
+
+  if (isHost) {
+    dataChannel = pc.createDataChannel('pong');
+    setupDataChannel(dataChannel);
+  } else {
+    pc.ondatachannel = (event) => {
+      dataChannel = event.channel;
+      setupDataChannel(dataChannel);
+    };
+  }
+}
+
+function setupDataChannel(channel) {
+  channel.onopen = () => {
+    debugLog('webrtc:datachannel-open', channel.label);
+    setStatus('connected');
+  };
+
+  channel.onclose = () => {
+    debugLog('webrtc:datachannel-close', channel.label);
+    setStatus('disconnected');
+    setMessage('Data channel closed. Leave and reconnect.');
+  };
+
+  channel.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'input' && role === 'host') {
+      hostInputs.guest = Number(msg.value) || 0;
+    }
+    if (msg.type === 'snapshot' && role === 'guest') {
+      latestSnapshot = msg.state;
+    }
+  };
+}
+
+function sendInput(value) {
+  if (role === 'host') {
+    hostInputs.host = value;
+    return;
+  }
+
+  guestInput = value;
+  if (dataChannel && dataChannel.readyState === 'open') {
+    dataChannel.send(JSON.stringify({ type: 'input', value: guestInput }));
   }
   powerItems=powerItems.filter((i)=>!i.dead);
 }
@@ -196,11 +445,173 @@ function tick(now){const dt=Math.min((now-lastSimTime)/1000,0.05); lastSimTime=n
 window.addEventListener('keydown',(e)=>{if(['w','W','ArrowUp'].includes(e.key)) keys.up=true; if(['s','S','ArrowDown'].includes(e.key)) keys.down=true;});
 window.addEventListener('keyup',(e)=>{if(['w','W','ArrowUp'].includes(e.key)) keys.up=false; if(['s','S','ArrowDown'].includes(e.key)) keys.down=false;});
 
-createRoomBtn.addEventListener('click', async ()=>{if(roomCode||pendingRoomCode) disconnectLocal(false); ensureSocket(); setStatus('waiting'); const code=randomCode(); pendingRoomCode=code; updateRoomLabel(); updateControlState(); try{await waitForSocketOpen(); pendingSignalAction={type:'create_room',roomCode:code}; socket.send(JSON.stringify(pendingSignalAction));}catch(error){setStatus('disconnected'); setMessage(error.message);}});
-joinRoomBtn.addEventListener('click', async ()=>{const code=roomCodeInput.value.trim().toUpperCase(); if(!code){setMessage('Enter a room code first.');return;} ensureSocket(); pendingRoomCode=null; setStatus('connecting'); roomCode=code; updateRoomLabel(); updateControlState(); try{await waitForSocketOpen(); pendingSignalAction={type:'join_room',roomCode:code}; socket.send(JSON.stringify(pendingSignalAction));}catch(error){roomCode=null; updateRoomLabel(); updateControlState(); setStatus('disconnected'); setMessage(error.message);}});
-leaveRoomBtn.addEventListener('click',()=>disconnectLocal(false));
-copyCodeBtn.addEventListener('click',async ()=>{const code=roomCode||pendingRoomCode; if(!code) return; const inviteLink=buildInviteLink(window.location.href,code); try{await navigator.clipboard.writeText(inviteLink); setMessage('Invite link copied.');}catch{setMessage(`Clipboard unavailable. Invite link: ${inviteLink}`);}});
+  ctx.fillRect(20, renderState.leftY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
+  ctx.fillRect(GAME_WIDTH - 32, renderState.rightY - PADDLE_HEIGHT / 2, 12, PADDLE_HEIGHT);
 
-initPatternPicker();
-setStatus('disconnected'); updateControlState(); updateRoomLabel(); const prefilledRoom=params.get('room'); if(prefilledRoom){roomCodeInput.value=prefilledRoom.toUpperCase();}
-setSignalLog('idle'); if(DEBUG_MODE&&debugPanelEl){debugPanelEl.classList.remove('hidden'); debugLog('signaling-candidates',SIGNALING_URLS);} requestAnimationFrame(tick);
+  ctx.beginPath();
+  ctx.arc(renderState.ballX, renderState.ballY, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.font = 'bold 40px sans-serif';
+  ctx.fillText(String(renderState.leftScore), GAME_WIDTH / 2 - 80, 48);
+  ctx.fillText(String(renderState.rightScore), GAME_WIDTH / 2 + 52, 48);
+}
+
+function tick(now) {
+  const dt = Math.min((now - lastSimTime) / 1000, 0.05);
+  lastSimTime = now;
+
+  const inputValue = keys.up && !keys.down ? -1 : keys.down && !keys.up ? 1 : 0;
+  if (inputValue !== guestInput || (role === 'host' && inputValue !== hostInputs.host)) {
+    sendInput(inputValue);
+  }
+
+  if (role === 'host' && status === 'connected') {
+    simulateHost(dt);
+    if (dataChannel && dataChannel.readyState === 'open' && now - lastSnapshotTime > 40) {
+      dataChannel.send(JSON.stringify({ type: 'snapshot', state }));
+      lastSnapshotTime = now;
+    }
+  }
+
+  if (role === 'guest' && status === 'connected') {
+    updateGuestRender(dt);
+  }
+
+  draw();
+  requestAnimationFrame(tick);
+}
+
+function isControlKey(key) {
+  return key === 'w' || key === 'W' || key === 'ArrowUp' || key === 's' || key === 'S' || key === 'ArrowDown';
+}
+
+window.addEventListener('keydown', (event) => {
+  if (isControlKey(event.key)) {
+    event.preventDefault();
+  }
+
+  if (event.key === 'w' || event.key === 'W' || event.key === 'ArrowUp') {
+    keys.up = true;
+  }
+  if (event.key === 's' || event.key === 'S' || event.key === 'ArrowDown') {
+    keys.down = true;
+  }
+});
+
+window.addEventListener('keyup', (event) => {
+  if (isControlKey(event.key)) {
+    event.preventDefault();
+  }
+
+  if (event.key === 'w' || event.key === 'W' || event.key === 'ArrowUp') {
+    keys.up = false;
+  }
+  if (event.key === 's' || event.key === 'S' || event.key === 'ArrowDown') {
+    keys.down = false;
+  }
+});
+
+createRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:create-room-click');
+  if (roomCode || pendingRoomCode) {
+    disconnectLocal(false);
+  }
+
+  ensureSocket();
+  setStatus('waiting');
+  setMessage('Creating room…');
+
+  const code = randomCode();
+  pendingRoomCode = code;
+  updateRoomLabel();
+  updateControlState();
+  setMessage(`Room code ${code} generated locally. Connecting to signaling…`);
+
+  try {
+    await waitForSocketOpen();
+    socket.send(JSON.stringify({ type: 'create_room', roomCode: code }));
+  } catch (error) {
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Room code generated locally but not registered yet.` : 'Unable to connect to signaling. Room code generated locally but not registered yet.');
+  }
+});
+
+joinRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:join-room-click');
+  const code = roomCodeInput.value.trim().toUpperCase();
+  if (!code) {
+    setMessage('Enter a room code first.');
+    return;
+  }
+
+  ensureSocket();
+  pendingRoomCode = null;
+  setStatus('connecting');
+  setMessage('Joining room…');
+  roomCode = code;
+  updateRoomLabel();
+  updateControlState();
+
+  try {
+    await waitForSocketOpen();
+    socket.send(JSON.stringify({ type: 'join_room', roomCode: code }));
+  } catch (error) {
+    roomCode = null;
+    updateRoomLabel();
+    updateControlState();
+    setStatus('disconnected');
+    setMessage(error instanceof Error ? `${error.message}. Retry create/join.` : 'Unable to connect to signaling. Retry create/join.');
+  }
+});
+
+leaveRoomBtn.addEventListener('click', () => {
+  debugLog('ui:leave-room-click');
+  disconnectLocal(false);
+});
+
+copyCodeBtn.addEventListener('click', async () => {
+  const code = roomCode || pendingRoomCode;
+  if (!code) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(code);
+    setMessage(`Room code ${code} copied.`);
+  } catch {
+    const fallback = document.createElement('textarea');
+    fallback.value = code;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.left = '-9999px';
+    document.body.appendChild(fallback);
+    fallback.select();
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(fallback);
+    if (copied) {
+      setMessage(`Room code ${code} copied.`);
+      return;
+    }
+
+    setMessage(`Clipboard unavailable. Room code: ${code}`);
+  }
+});
+
+setStatus('disconnected');
+updateControlState();
+updateRoomLabel();
+if (DEBUG_MODE && debugPanelEl) {
+  debugPanelEl.classList.remove('hidden');
+  debugLog('debug-mode', 'enabled via ?debug=1');
+  debugLog('signaling-url', SIGNALING_URL);
+}
+window.addEventListener('error', (event) => {
+  debugLog('window:error', event.message || 'unknown');
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  debugLog('window:unhandledrejection', reason);
+});
+requestAnimationFrame(tick);
