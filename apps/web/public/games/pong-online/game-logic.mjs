@@ -101,3 +101,18 @@ export function messageForSocketClose({ closeCode, signalingUrl, diagnosis }) {
 
   return `Signaling connection closed (code ${closeCode || 'unknown'}). Retry create/join.`;
 }
+
+
+export function paddleScaleAfterPoint(currentScale, shrinkStep = 0.05, minScale = 0.4) {
+  return Math.max(minScale, currentScale * (1 - shrinkStep));
+}
+
+export function powerItemHitsPaddle(itemX, itemY, paddleX, paddleY, paddleHeight, xThreshold = 16) {
+  return Math.abs(itemX - paddleX) < xThreshold && Math.abs(itemY - paddleY) < paddleHeight / 2;
+}
+
+export function fruitForRound(fruits, randomValue) {
+  if (!fruits.length) return null;
+  const index = Math.floor(randomValue * fruits.length) % fruits.length;
+  return fruits[index];
+}

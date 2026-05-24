@@ -104,6 +104,8 @@ const PADDLE_HEIGHT = 90;
 const WIN_SCORE = 8;
 const POWER_DURATION = 20000;
 const POWER_ITEM_SIZE = 10;
+const PADDLE_SHRINK_STEP = 0.05;
+const MIN_PADDLE_SCALE = 0.4;
 
 const PATTERN_PALETTES = [
   { name: '🌸 Bloom', colors: ['#f9a8d4', '#f472b6', '#fb7185', '#fef08a'] },
@@ -113,6 +115,7 @@ const PATTERN_PALETTES = [
   { name: '🌿 Forest Fern', colors: ['#4ade80', '#22c55e', '#a3e635', '#bef264'] },
   { name: '🌌 Aurora', colors: ['#38bdf8', '#22d3ee', '#a78bfa', '#34d399'] },
 ];
+const FRUITS = ['🍎', '🍊', '🍌', '🍉', '🍓', '🍍', '🍇', '🍐'];
 
 canvas.addEventListener('pointerdown', () => {
   canvas.focus();
@@ -135,6 +138,8 @@ const defaultState = () => ({
   stretchWrappedBy: null,
   selectedPatterns: [],
   patterns: { left: '#e2e8f0', right: '#e2e8f0' },
+  paddleScale: { left: 1, right: 1 },
+  ballFruit: FRUITS[Math.floor(Math.random() * FRUITS.length)],
 });
 
 function nowMs() {
@@ -617,6 +622,12 @@ function selectedPatternColor() {
   return pattern?.colors[0] ?? '#e2e8f0';
 }
 
+function paddleHeightForSide(side) {
+  const scale = state.paddleScale?.[side] ?? 1;
+  const boosted = hasEffect(state.effects[side], 'bigger') ? 1.4 : hasEffect(state.effects[side], 'smaller') ? 0.65 : 1;
+  return PADDLE_HEIGHT * scale * boosted;
+}
+
 function applyEffect(side, type) {
   state.effects[side][type] = nowMs() + POWER_DURATION;
 }
@@ -670,13 +681,13 @@ function simulateHost(dt) {
     state.ballY = Math.max(8, Math.min(GAME_HEIGHT - 8, state.ballY));
   }
 
-  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= (hasEffect(state.effects.left, 'bigger') ? PADDLE_HEIGHT * 0.7 : PADDLE_HEIGHT / 2);
+  const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= paddleHeightForSide('left') / 2;
   if (leftHit && state.ballVX < 0) {
     state.ballVX *= -1.04;
     state.ballX = 36;
   }
 
-  const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= (hasEffect(state.effects.right, 'bigger') ? PADDLE_HEIGHT * 0.7 : PADDLE_HEIGHT / 2);
+  const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= paddleHeightForSide('right') / 2;
   if (rightHit && state.ballVX > 0) {
     state.ballVX *= -1.04;
     state.ballX = GAME_WIDTH - 36;
@@ -684,11 +695,13 @@ function simulateHost(dt) {
 
   if (state.ballX < 0) {
     state.rightScore += 1;
+    state.paddleScale.right = Math.max(MIN_PADDLE_SCALE, state.paddleScale.right * (1 - PADDLE_SHRINK_STEP));
     resetBall(1);
   }
 
   if (state.ballX > GAME_WIDTH) {
     state.leftScore += 1;
+    state.paddleScale.left = Math.max(MIN_PADDLE_SCALE, state.paddleScale.left * (1 - PADDLE_SHRINK_STEP));
     resetBall(-1);
   }
   if (state.leftScore >= WIN_SCORE || state.rightScore >= WIN_SCORE) {
@@ -701,12 +714,13 @@ function simulateHost(dt) {
     if (item.y < 10 || item.y > GAME_HEIGHT - 10) item.vy *= -1;
     const paddleY = item.targetSide === 'left' ? state.leftY : state.rightY;
     const paddleX = item.targetSide === 'left' ? 26 : GAME_WIDTH - 26;
-    if (item.kind === 'powerUp' && Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < PADDLE_HEIGHT / 2) {
+    const paddleHeight = paddleHeightForSide(item.targetSide);
+    if (item.kind === 'powerUp' && Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < paddleHeight / 2) {
       applyEffect(item.targetSide, item.type);
       return false;
     }
     if (item.kind === 'powerDown') {
-      if (Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < PADDLE_HEIGHT / 2) {
+      if (Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < paddleHeight / 2) {
         item.vx *= -1;
         item.targetSide = item.targetSide === 'left' ? 'right' : 'left';
       }
@@ -728,6 +742,7 @@ function resetBall(direction) {
   state.ballY = GAME_HEIGHT / 2;
   state.ballVX = 280 * direction;
   state.ballVY = (Math.random() > 0.5 ? 1 : -1) * (120 + Math.random() * 120);
+  state.ballFruit = FRUITS[Math.floor(Math.random() * FRUITS.length)];
 }
 
 function updateGuestRender(dt) {
@@ -754,9 +769,23 @@ function draw() {
     ctx.fillRect(GAME_WIDTH / 2 - 2, y, 4, 16);
   }
 
-  const leftPadHeight = hasEffect(renderState.effects.left || {}, 'bigger') ? PADDLE_HEIGHT * 1.4 : hasEffect(renderState.effects.left || {}, 'smaller') ? PADDLE_HEIGHT * 0.65 : PADDLE_HEIGHT;
-  const rightPadHeight = hasEffect(renderState.effects.right || {}, 'bigger') ? PADDLE_HEIGHT * 1.4 : hasEffect(renderState.effects.right || {}, 'smaller') ? PADDLE_HEIGHT * 0.65 : PADDLE_HEIGHT;
-  ctx.fillStyle = renderState.patterns.left || '#e2e8f0';
+  const leftScale = renderState.paddleScale?.left ?? 1;
+  const rightScale = renderState.paddleScale?.right ?? 1;
+  const leftPadHeight = PADDLE_HEIGHT * leftScale * (hasEffect(renderState.effects.left || {}, 'bigger') ? 1.4 : hasEffect(renderState.effects.left || {}, 'smaller') ? 0.65 : 1);
+  const rightPadHeight = PADDLE_HEIGHT * rightScale * (hasEffect(renderState.effects.right || {}, 'bigger') ? 1.4 : hasEffect(renderState.effects.right || {}, 'smaller') ? 0.65 : 1);
+  const leftPatternCanvas = document.createElement('canvas');
+  leftPatternCanvas.width = 24; leftPatternCanvas.height = 24;
+  const leftPctx = leftPatternCanvas.getContext('2d');
+  leftPctx.fillStyle = renderState.patterns.left || '#e2e8f0'; leftPctx.fillRect(0, 0, 24, 24);
+  leftPctx.strokeStyle = 'rgba(255,255,255,0.45)'; leftPctx.lineWidth = 3; leftPctx.beginPath(); leftPctx.moveTo(0, 24); leftPctx.lineTo(24, 0); leftPctx.stroke();
+  const rightPatternCanvas = document.createElement('canvas');
+  rightPatternCanvas.width = 24; rightPatternCanvas.height = 24;
+  const rightPctx = rightPatternCanvas.getContext('2d');
+  rightPctx.fillStyle = renderState.patterns.right || '#e2e8f0'; rightPctx.fillRect(0, 0, 24, 24);
+  rightPctx.fillStyle = 'rgba(255,255,255,0.35)'; rightPctx.beginPath(); rightPctx.arc(7, 7, 3, 0, Math.PI * 2); rightPctx.fill(); rightPctx.beginPath(); rightPctx.arc(17, 17, 3, 0, Math.PI * 2); rightPctx.fill();
+  const leftPattern = ctx.createPattern(leftPatternCanvas, 'repeat');
+  const rightPattern = ctx.createPattern(rightPatternCanvas, 'repeat');
+  ctx.fillStyle = leftPattern || (renderState.patterns.left || '#e2e8f0');
   ctx.fillRect(20, renderState.leftY - leftPadHeight / 2, 12, leftPadHeight);
   if (hasEffect(renderState.effects.left || {}, 'gaps')) {
     ctx.clearRect(20, renderState.leftY - leftPadHeight * 0.2, 12, leftPadHeight * 0.1);
@@ -765,7 +794,7 @@ function draw() {
     ctx.fillRect(40, renderState.leftY - 8, 6, 10);
     ctx.fillRect(40, renderState.leftY + 6, 6, 10);
   }
-  ctx.fillStyle = renderState.patterns.right || '#e2e8f0';
+  ctx.fillStyle = rightPattern || (renderState.patterns.right || '#e2e8f0');
   ctx.fillRect(GAME_WIDTH - 32, renderState.rightY - rightPadHeight / 2, 12, rightPadHeight);
   if (hasEffect(renderState.effects.right || {}, 'gaps')) {
     ctx.clearRect(GAME_WIDTH - 32, renderState.rightY - rightPadHeight * 0.2, 12, rightPadHeight * 0.1);
@@ -775,9 +804,8 @@ function draw() {
     ctx.fillRect(GAME_WIDTH - 46, renderState.rightY + 6, 6, 10);
   }
 
-  ctx.beginPath();
-  ctx.arc(renderState.ballX, renderState.ballY, 8, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.font = '20px serif';
+  ctx.fillText(renderState.ballFruit || '🍎', renderState.ballX - 9, renderState.ballY + 7);
 
   ctx.font = 'bold 40px sans-serif';
   ctx.fillStyle = '#e2e8f0';
