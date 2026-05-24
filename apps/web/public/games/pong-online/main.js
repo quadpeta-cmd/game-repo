@@ -1,44 +1,20 @@
-function resolveSignalingUrl() {
+function resolveSignalingUrls() {
   const params = new URLSearchParams(window.location.search);
   const override = params.get('signaling');
 
   if (override) {
-    return override;
+    return [override];
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const sameOriginPath = `${wsProtocol}//${window.location.host}/ws`;
+  const sameHostPort = `${wsProtocol}//${window.location.hostname}:8787`;
 
-  const fromUrl = (rawUrl) => {
-    try {
-      const base = new URL(rawUrl);
-      if (!base.hostname) {
-        return null;
-      }
-      base.protocol = protocol;
-      base.port = '8787';
-      base.pathname = '';
-      base.search = '';
-      base.hash = '';
-      return base.toString().replace(/\/$/, '');
-    } catch {
-      return null;
-    }
-  };
-
-  const fromLocation = fromUrl(window.location.href);
-  if (fromLocation) {
-    return fromLocation;
-  }
-
-  const fromBaseUri = fromUrl(document.baseURI);
-  if (fromBaseUri) {
-    return fromBaseUri;
-  }
-
-  return `${protocol}//localhost:8787`;
+  return [sameOriginPath, sameHostPort, `${wsProtocol}//localhost:8787`];
 }
 
-const SIGNALING_URL = resolveSignalingUrl();
+const SIGNALING_URLS = resolveSignalingUrls();
+let signalingUrlIndex = 0;
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 const canvas = document.getElementById('game');
@@ -237,11 +213,12 @@ function ensureSocket() {
   }
 
   try {
-    socket = new WebSocket(SIGNALING_URL);
-    debugLog('socket:connect', SIGNALING_URL);
+    const signalingUrl = SIGNALING_URLS[signalingUrlIndex] || SIGNALING_URLS[0];
+    socket = new WebSocket(signalingUrl);
+    debugLog('socket:connect', signalingUrl);
   } catch (error) {
     setStatus('disconnected');
-    setMessage(error instanceof Error ? `Invalid signaling URL: ${SIGNALING_URL}` : 'Invalid signaling URL.');
+    setMessage(error instanceof Error ? 'Invalid signaling URL.' : 'Invalid signaling URL.');
     socket = null;
     return;
   }
@@ -345,6 +322,7 @@ function ensureSocket() {
     setStatus('disconnected');
     if (pendingSignalAction && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       reconnectAttempts += 1;
+      signalingUrlIndex = (signalingUrlIndex + 1) % SIGNALING_URLS.length;
       const delayMs = 300 * reconnectAttempts;
       setMessage(`Signaling dropped (code ${event.code || 'unknown'}). Retrying ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}…`);
       window.setTimeout(() => {
@@ -738,7 +716,7 @@ updateRoomLabel();
 if (DEBUG_MODE && debugPanelEl) {
   debugPanelEl.classList.remove('hidden');
   debugLog('debug-mode', 'enabled via ?debug=1');
-  debugLog('signaling-url', SIGNALING_URL);
+  debugLog('signaling-candidates', SIGNALING_URLS);
 }
 window.addEventListener('error', (event) => {
   debugLog('window:error', event.message || 'unknown');
