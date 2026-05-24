@@ -339,7 +339,7 @@ function ensureSocket() {
   });
 }
 
-function waitForSocketOpen(timeoutMs = 5000) {
+function waitForSocketOpen() {
   return new Promise((resolve, reject) => {
     if (!socket) {
       reject(new Error('Signaling socket not initialized'));
@@ -362,7 +362,6 @@ function waitForSocketOpen(timeoutMs = 5000) {
       socket?.removeEventListener('open', handleOpen);
       socket?.removeEventListener('error', handleError);
       socket?.removeEventListener('close', handleClose);
-      clearTimeout(timeoutId);
     };
 
     const finish = (fn) => {
@@ -385,10 +384,6 @@ function waitForSocketOpen(timeoutMs = 5000) {
     const handleClose = () => {
       finish(() => reject(new Error('Signaling connection closed')));
     };
-
-    const timeoutId = window.setTimeout(() => {
-      finish(() => reject(new Error('Timed out connecting to signaling')));
-    }, timeoutMs);
 
     socket.addEventListener('open', handleOpen);
     socket.addEventListener('error', handleError);
@@ -427,6 +422,7 @@ async function createPeer(isHost) {
     if (!pc) {
       return;
     }
+    debugLog('webrtc:connectionState', pc.connectionState);
 
     if (pc.connectionState === 'connected') {
       setStatus('connected');
@@ -693,7 +689,22 @@ copyCodeBtn.addEventListener('click', async () => {
     await navigator.clipboard.writeText(code);
     setMessage(`Room code ${code} copied.`);
   } catch {
-    setMessage('Clipboard unavailable. Copy the room code manually.');
+    const fallback = document.createElement('textarea');
+    fallback.value = code;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.left = '-9999px';
+    document.body.appendChild(fallback);
+    fallback.select();
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(fallback);
+    if (copied) {
+      setMessage(`Room code ${code} copied.`);
+      return;
+    }
+
+    setMessage(`Clipboard unavailable. Room code: ${code}`);
   }
 });
 
@@ -713,4 +724,3 @@ window.addEventListener('unhandledrejection', (event) => {
   debugLog('window:unhandledrejection', reason);
 });
 requestAnimationFrame(tick);
-    debugLog('webrtc:connectionState', pc.connectionState);
