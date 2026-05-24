@@ -38,6 +38,15 @@ test('resolveSignalingUrl uses current URL host + ws port', () => {
   assert.equal(value, 'wss://play.example.com:8787');
 });
 
+test('resolveSignalingUrl rewrites github.dev forwarded host to signaling port host', () => {
+  const value = resolveSignalingUrl({
+    currentUrl: 'https://crispy-invention-7v4p6p4g9wqgf9gj-5173.app.github.dev/play/pong-online',
+    baseUri: 'https://fallback.example.com/app/',
+    override: null,
+  });
+  assert.equal(value, 'wss://crispy-invention-7v4p6p4g9wqgf9gj-8787.app.github.dev');
+});
+
 test('generateRoomCode maps values into allowed alphabet', () => {
   const code = generateRoomCode(Uint32Array.from([0, 1, 2, 30, 31, 32]));
   assert.equal(code, 'ABC89A');

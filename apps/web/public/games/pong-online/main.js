@@ -2,12 +2,24 @@ function resolveSignalingUrl({ currentUrl, baseUri, override }) {
   if (override) return override;
   const protocol = new URL(currentUrl).protocol === 'https:' ? 'wss:' : 'ws:';
 
+  const resolveCodespacesHost = (host) => {
+    const codespacesMatch = host.match(/^(.*)-(\d+)\.app\.github\.dev$/);
+    if (!codespacesMatch) return null;
+    return `${codespacesMatch[1]}-8787.app.github.dev`;
+  };
+
   const fromUrl = (rawUrl) => {
     try {
       const base = new URL(rawUrl);
       if (!base.hostname) return null;
       base.protocol = protocol;
-      base.port = '8787';
+      const codespacesHost = resolveCodespacesHost(base.host);
+      if (codespacesHost) {
+        base.host = codespacesHost;
+        base.port = '';
+      } else {
+        base.port = '8787';
+      }
       base.pathname = '';
       base.search = '';
       base.hash = '';
