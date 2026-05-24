@@ -288,7 +288,7 @@ function ensureSocket() {
     }
   });
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('close', (event) => {
     debugLog('socket:close');
     socket = null;
     setStatus('disconnected');
