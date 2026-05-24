@@ -58,6 +58,9 @@
       const shapeTypes = ['rect', 'circle', 'diamond', 'triangle'];
       const colors = ['#f87171', '#fb923c', '#facc15', '#34d399', '#60a5fa', '#c084fc'];
       const MAX_ENEMY_PELLETS = 18;
+      function maxEnemyPelletsForLevel(currentLevel) {
+        return Math.max(1, Math.floor(MAX_ENEMY_PELLETS / 5));
+      }
 
       document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') keys.left = true; if (e.key === 'ArrowRight') keys.right = true; });
       document.addEventListener('keyup', (e) => { if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; });
@@ -137,7 +140,7 @@
           if (level >= 3) {
             e.shotCd -= 1;
             const inTopBand = e.y < canvas.height * 0.15;
-            const canShoot = inTopBand && pellets.length < MAX_ENEMY_PELLETS;
+            const canShoot = inTopBand && pellets.length < maxEnemyPelletsForLevel(level);
             if (e.shotCd <= 0 && canShoot) {
               spawnPopcorn(e, Math.random() < 0.7);
               e.shotCd = rand(6, 22);
@@ -151,9 +154,10 @@
           if (boss.x < 20 || boss.x + boss.w > canvas.width - 20) boss.vx *= -1;
           boss.fireCd -= 1;
           if (boss.fireCd <= 0) {
-            spawnPopcorn(boss, Math.random() < 0.85);
-            if (Math.random() < 0.7) spawnPopcorn(boss, false);
-            if (Math.random() < 0.35) spawnPopcorn(boss, true);
+            const pelletCap = maxEnemyPelletsForLevel(level);
+            if (pellets.length < pelletCap) spawnPopcorn(boss, Math.random() < 0.85);
+            if (Math.random() < 0.7 && pellets.length < pelletCap) spawnPopcorn(boss, false);
+            if (Math.random() < 0.35 && pellets.length < pelletCap) spawnPopcorn(boss, true);
             boss.fireCd = rand(8, 16);
           }
           if (intersects(player, boss)) { alert('Hippo stomped you! Restarting at level 1.'); resetRun(); return; }
