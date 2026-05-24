@@ -17,7 +17,17 @@ function checkHtmlContains(path, requiredSnippets) {
   });
 }
 
+function checkNginxMimeConfig(path) {
+  const conf = readFileSync(path, 'utf8');
+  assert(
+    conf.includes('include /etc/nginx/mime.types;'),
+    `${path} must include /etc/nginx/mime.types; to preserve default MIME mappings (e.g. text/css)`
+  );
+}
+
 function run() {
+  checkNginxMimeConfig('nginx.conf');
+
   checkHtmlContains('apps/web/public/games/pong-solo/index.html', [
     'canvas id="game"',
     'script type="module" src="./main.js"',
@@ -36,7 +46,7 @@ function run() {
     'id="create-room"',
     'id="join-room"',
     'id="pattern-select"',
-    'script type="module" src="./main.js"',
+    'script src="./main.js"',
   ]);
   checkSyntax('apps/web/public/games/pong-online/main.js');
   checkSyntax('apps/web/public/games/pong-online/game-logic.mjs');
