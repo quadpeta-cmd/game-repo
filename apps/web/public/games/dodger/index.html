@@ -85,11 +85,10 @@
         }
         if (level >= 4 && Math.random() < 0.45) {
           const fromLeft = Math.random() < 0.5;
-          const topOrBottom = Math.random() < 0.5;
           e.x = fromLeft ? -baseW : canvas.width + baseW;
-          e.y = topOrBottom ? -baseH : canvas.height + baseH;
+          e.y = rand(-baseH - 8, canvas.height * 0.18);
           e.vx = fromLeft ? rand(1.0, 2.8) : -rand(1.0, 2.8);
-          e.vy = topOrBottom ? rand(1.2, 2.6) : -rand(1.2, 2.6);
+          e.vy = rand(1.2, 2.6);
         }
         enemies.push(e);
       }
@@ -136,7 +135,7 @@
             const canShoot = inTopBand && pellets.length < MAX_ENEMY_PELLETS;
             if (e.shotCd <= 0 && canShoot) {
               spawnPopcorn(e, Math.random() < 0.7);
-              e.shotCd = rand(28, 85);
+              e.shotCd = rand(6, 22);
             }
           }
           if (intersects(player, e)) { alert('You got crushed! Restarting at level 1.'); resetRun(); return; }
