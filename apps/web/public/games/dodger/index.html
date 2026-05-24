@@ -58,6 +58,10 @@
       const shapeTypes = ['rect', 'circle', 'diamond', 'triangle'];
       const colors = ['#f87171', '#fb923c', '#facc15', '#34d399', '#60a5fa', '#c084fc'];
       const MAX_ENEMY_PELLETS = 18;
+      function maxEnemyPelletsForLevel(currentLevel) {
+        if (currentLevel === 3) return Math.max(1, Math.floor(MAX_ENEMY_PELLETS / 5));
+        return MAX_ENEMY_PELLETS;
+      }
 
       document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') keys.left = true; if (e.key === 'ArrowRight') keys.right = true; });
       document.addEventListener('keyup', (e) => { if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; });
@@ -137,7 +141,7 @@
           if (level >= 3) {
             e.shotCd -= 1;
             const inTopBand = e.y < canvas.height * 0.15;
-            const canShoot = inTopBand && pellets.length < MAX_ENEMY_PELLETS;
+            const canShoot = inTopBand && pellets.length < maxEnemyPelletsForLevel(level);
             if (e.shotCd <= 0 && canShoot) {
               spawnPopcorn(e, Math.random() < 0.7);
               e.shotCd = rand(6, 22);
