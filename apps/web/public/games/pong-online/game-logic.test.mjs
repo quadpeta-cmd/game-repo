@@ -6,6 +6,7 @@ import {
   generateRoomCode,
   isMatchWinner,
   losingSide,
+  messageForSocketClose,
   paddleHeightForEffect,
   paddleSpeedForEffect,
   resolveSignalingUrl,
@@ -117,4 +118,33 @@ test('shouldSuppressSocketCloseMessage only suppresses normal close after explic
   assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: true, socketCloseCode: 1000 }), true);
   assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: false, socketCloseCode: 1000 }), false);
   assert.equal(shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage: true, socketCloseCode: 1006 }), false);
+});
+
+
+test('messageForSocketClose returns actionable message for reachable signaling on 1006', () => {
+  const message = messageForSocketClose({
+    closeCode: 1006,
+    signalingUrl: 'ws://localhost:8787',
+    diagnosis: { reachable: true, probeUrl: 'http://localhost:8787/' },
+  });
+  assert.match(message, /reachable/);
+  assert.match(message, /check signaling server logs/);
+});
+
+test('messageForSocketClose returns restart guidance for unreachable signaling on 1006', () => {
+  const message = messageForSocketClose({
+    closeCode: 1006,
+    signalingUrl: 'ws://localhost:8787',
+    diagnosis: { reachable: false },
+  });
+  assert.match(message, /Could not reach signaling host/);
+  assert.match(message, /start\/restart signaling/);
+});
+
+test('messageForSocketClose returns generic message for other codes', () => {
+  const message = messageForSocketClose({
+    closeCode: 1001,
+    signalingUrl: 'ws://localhost:8787',
+  });
+  assert.equal(message, 'Signaling connection closed (code 1001). Retry create/join.');
 });

@@ -69,3 +69,16 @@ export function isMatchWinner(leftScore, rightScore, winScore = 8) {
 export function shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode }) {
   return Boolean(suppressNextSocketCloseMessage && socketCloseCode === 1000);
 }
+
+
+export function messageForSocketClose({ closeCode, signalingUrl, diagnosis }) {
+  if (closeCode === 1006) {
+    if (diagnosis?.reachable) {
+      return `Signaling dropped unexpectedly (1006). Server ${diagnosis.probeUrl} is reachable, so check signaling server logs for socket errors and then retry create/join.`;
+    }
+
+    return `Signaling dropped unexpectedly (1006). Could not reach signaling host at ${signalingUrl} — start/restart signaling and retry create/join.`;
+  }
+
+  return `Signaling connection closed (code ${closeCode || 'unknown'}). Retry create/join.`;
+}
