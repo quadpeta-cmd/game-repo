@@ -12,8 +12,14 @@ export function resolveSignalingUrl({ currentUrl, baseUri, override }) {
     try {
       const base = new URL(rawUrl);
       if (!base.hostname) return null;
+      const codespacesLikeHost = base.hostname.match(/^(.*)-(\d+)\.app\.github\.dev$/);
+      if (codespacesLikeHost) {
+        base.hostname = `${codespacesLikeHost[1]}-8787.app.github.dev`;
+        base.port = '';
+      } else {
+        base.port = '8787';
+      }
       base.protocol = protocol;
-      base.port = '8787';
       base.pathname = '';
       base.search = '';
       base.hash = '';

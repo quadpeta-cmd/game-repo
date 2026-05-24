@@ -78,6 +78,16 @@ canvas {
   border-radius: 10px;
   box-shadow: 0 12px 30px rgba(2, 6, 23, 0.45);
 }
+canvas.wavy {
+  animation: wobble 0.9s ease-in-out infinite;
+  filter: blur(0.7px) saturate(1.4) hue-rotate(20deg);
+}
+@keyframes wobble {
+  0% { transform: translateX(0px) skewX(0deg); }
+  25% { transform: translateX(1px) skewX(0.8deg); }
+  50% { transform: translateX(-1px) skewX(-0.8deg); }
+  100% { transform: translateX(0px) skewX(0deg); }
+}
 .debug-panel {
   margin-top: 12px;
   border: 1px solid #475569;
