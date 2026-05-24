@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { loadManifest, type GameManifest } from '../lib/games';
 
 export function PlayPage() {
   const { gameId } = useParams<{ gameId: string }>();
+  const location = useLocation();
   const [manifest, setManifest] = useState<GameManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -218,7 +219,7 @@ export function PlayPage() {
       <iframe
         ref={iframeRef}
         title={manifest.name}
-        src={`/games/${manifest.id}/${manifest.entry}`}
+        src={`/games/${manifest.id}/${manifest.entry}${location.search}`}
         sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         className="game-frame"

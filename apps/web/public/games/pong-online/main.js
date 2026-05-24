@@ -1,44 +1,20 @@
-function resolveSignalingUrl() {
+function resolveSignalingUrls() {
   const params = new URLSearchParams(window.location.search);
   const override = params.get('signaling');
 
   if (override) {
-    return override;
+    return [override];
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const sameOriginPath = `${wsProtocol}//${window.location.host}/ws`;
+  const sameHostPort = `${wsProtocol}//${window.location.hostname}:8787`;
 
-  const fromUrl = (rawUrl) => {
-    try {
-      const base = new URL(rawUrl);
-      if (!base.hostname) {
-        return null;
-      }
-      base.protocol = protocol;
-      base.port = '8787';
-      base.pathname = '';
-      base.search = '';
-      base.hash = '';
-      return base.toString().replace(/\/$/, '');
-    } catch {
-      return null;
-    }
-  };
-
-  const fromLocation = fromUrl(window.location.href);
-  if (fromLocation) {
-    return fromLocation;
-  }
-
-  const fromBaseUri = fromUrl(document.baseURI);
-  if (fromBaseUri) {
-    return fromBaseUri;
-  }
-
-  return `${protocol}//localhost:8787`;
+  return [sameOriginPath, sameHostPort, `${wsProtocol}//localhost:8787`];
 }
 
-const SIGNALING_URL = resolveSignalingUrl();
+const SIGNALING_URLS = resolveSignalingUrls();
+let signalingUrlIndex = 0;
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 const canvas = document.getElementById('game');
@@ -48,12 +24,15 @@ const statusEl = document.getElementById('status');
 const roleEl = document.getElementById('role');
 const roomLabelEl = document.getElementById('room-label');
 const messageEl = document.getElementById('message');
+const signalLogEl = document.getElementById('signal-log');
 
 const createRoomBtn = document.getElementById('create-room');
 const joinRoomBtn = document.getElementById('join-room');
 const leaveRoomBtn = document.getElementById('leave-room');
 const copyCodeBtn = document.getElementById('copy-code');
 const roomCodeInput = document.getElementById('room-code');
+const debugPanelEl = document.getElementById('debug-panel');
+const debugLogEl = document.getElementById('debug-log');
 
 const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
@@ -94,6 +73,47 @@ let keys = { up: false, down: false };
 let lastSimTime = performance.now();
 let lastSnapshotTime = 0;
 let latestSnapshot = null;
+let pendingSignalAction = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
+const DEBUG_MODE = new URLSearchParams(window.location.search).get('debug') === '1';
+const MAX_DEBUG_LINES = 300;
+const debugLines = [];
+
+function setSignalLog(text) {
+  if (signalLogEl) {
+    signalLogEl.textContent = text;
+  }
+}
+
+function debugLog(message, data) {
+  if (!DEBUG_MODE) {
+    return;
+  }
+
+  const stamp = new Date().toISOString().slice(11, 23);
+  let suffix = '';
+  if (typeof data !== 'undefined') {
+    if (typeof data === 'string') {
+      suffix = ` ${data}`;
+    } else {
+      try {
+        suffix = ` ${JSON.stringify(data)}`;
+      } catch {
+        suffix = ' [unserializable data]';
+      }
+    }
+  }
+  const line = `[${stamp}] ${message}${suffix}`;
+  debugLines.push(line);
+  if (debugLines.length > MAX_DEBUG_LINES) {
+    debugLines.shift();
+  }
+  if (debugLogEl) {
+    debugLogEl.textContent = debugLines.join('\n');
+  }
+  console.debug(`[pong-online] ${message}`, data ?? '');
+}
 
 async function createAndSendOffer() {
   if (!pc || !socket || socket.readyState !== WebSocket.OPEN || !roomCode) {
@@ -108,15 +128,18 @@ async function createAndSendOffer() {
 function setStatus(next) {
   status = next;
   statusEl.textContent = status;
+  debugLog('status', next);
 }
 
 function setMessage(text) {
   messageEl.textContent = text;
+  debugLog('message', text);
 }
 
 function setRole(nextRole) {
   role = nextRole;
   roleEl.textContent = role ? `(${role})` : '-';
+  debugLog('role', role ?? '-');
 }
 
 function updateRoomLabel() {
@@ -187,6 +210,8 @@ function disconnectLocal(isRemote = false) {
   state = defaultState();
   renderState = defaultState();
   latestSnapshot = null;
+  pendingSignalAction = null;
+  reconnectAttempts = 0;
 }
 
 function ensureSocket() {
@@ -195,24 +220,44 @@ function ensureSocket() {
   }
 
   try {
-    socket = new WebSocket(SIGNALING_URL);
+    const signalingUrl = SIGNALING_URLS[signalingUrlIndex] || SIGNALING_URLS[0];
+    socket = new WebSocket(signalingUrl);
+    debugLog('socket:connect', signalingUrl);
+    setSignalLog(`connect -> ${signalingUrl}`);
   } catch (error) {
     setStatus('disconnected');
-    setMessage(error instanceof Error ? `Invalid signaling URL: ${SIGNALING_URL}` : 'Invalid signaling URL.');
+    setMessage(error instanceof Error ? 'Invalid signaling URL.' : 'Invalid signaling URL.');
     socket = null;
     return;
   }
 
   socket.addEventListener('open', () => {
+    debugLog('socket:open');
+    setSignalLog('open');
+    reconnectAttempts = 0;
+    if (pendingSignalAction) {
+      debugLog('socket:replay-action', pendingSignalAction.type);
+      socket.send(JSON.stringify(pendingSignalAction));
+    }
     if (status === 'connecting') {
       setMessage('Connected to signaling. Finishing handshake…');
     }
   });
 
   socket.addEventListener('message', async (event) => {
-    const message = JSON.parse(event.data);
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      debugLog('socket:bad-json', String(event.data));
+      setMessage('Received invalid signaling message.');
+      return;
+    }
+    debugLog('socket:message', message.type || 'unknown');
+    setSignalLog(`message:${message.type || 'unknown'}`);
 
     if (message.type === 'room_created') {
+      pendingSignalAction = null;
       pendingRoomCode = null;
       roomCode = message.roomCode;
       updateRoomLabel();
@@ -225,6 +270,7 @@ function ensureSocket() {
     }
 
     if (message.type === 'room_joined') {
+      pendingSignalAction = null;
       roomCode = message.roomCode;
       updateRoomLabel();
       updateControlState();
@@ -274,23 +320,39 @@ function ensureSocket() {
     }
 
     if (message.type === 'error') {
+      pendingSignalAction = null;
       setMessage(`Error: ${message.message}`);
       setStatus('disconnected');
     }
   });
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('close', (event) => {
+    debugLog('socket:close', { code: event.code, reason: event.reason, wasClean: event.wasClean });
+    setSignalLog(`close:${event.code || 'unknown'} clean=${event.wasClean ? 'yes' : 'no'}`);
     socket = null;
     setStatus('disconnected');
-    setMessage('Signaling connection closed. Retry create/join.');
+    if (pendingSignalAction && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      reconnectAttempts += 1;
+      signalingUrlIndex = (signalingUrlIndex + 1) % SIGNALING_URLS.length;
+      const delayMs = 300 * reconnectAttempts;
+      setMessage(`Signaling dropped (code ${event.code || 'unknown'}). Retrying ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}…`);
+      setSignalLog(`retry ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+      window.setTimeout(() => {
+        ensureSocket();
+      }, delayMs);
+      return;
+    }
+    setMessage(`Signaling connection closed (code ${event.code || 'unknown'}). Retry create/join.`);
   });
 
   socket.addEventListener('error', () => {
+    debugLog('socket:error');
+    setSignalLog('error');
     setMessage('Signaling error. Check server and retry.');
   });
 }
 
-function waitForSocketOpen(timeoutMs = 5000) {
+function waitForSocketOpen() {
   return new Promise((resolve, reject) => {
     if (!socket) {
       reject(new Error('Signaling socket not initialized'));
@@ -313,7 +375,6 @@ function waitForSocketOpen(timeoutMs = 5000) {
       socket?.removeEventListener('open', handleOpen);
       socket?.removeEventListener('error', handleError);
       socket?.removeEventListener('close', handleClose);
-      clearTimeout(timeoutId);
     };
 
     const finish = (fn) => {
@@ -337,10 +398,6 @@ function waitForSocketOpen(timeoutMs = 5000) {
       finish(() => reject(new Error('Signaling connection closed')));
     };
 
-    const timeoutId = window.setTimeout(() => {
-      finish(() => reject(new Error('Timed out connecting to signaling')));
-    }, timeoutMs);
-
     socket.addEventListener('open', handleOpen);
     socket.addEventListener('error', handleError);
     socket.addEventListener('close', handleClose);
@@ -361,9 +418,11 @@ async function flushPendingCandidates() {
 async function createPeer(isHost) {
   closePeerConnection();
   pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  debugLog('webrtc:peer-created', { isHost });
 
   pc.onicecandidate = (event) => {
     if (event.candidate && socket && socket.readyState === WebSocket.OPEN && roomCode) {
+      debugLog('webrtc:ice-local-candidate');
       socket.send(JSON.stringify({
         type: 'ice_candidate',
         roomCode,
@@ -376,6 +435,7 @@ async function createPeer(isHost) {
     if (!pc) {
       return;
     }
+    debugLog('webrtc:connectionState', pc.connectionState);
 
     if (pc.connectionState === 'connected') {
       setStatus('connected');
@@ -401,10 +461,12 @@ async function createPeer(isHost) {
 
 function setupDataChannel(channel) {
   channel.onopen = () => {
+    debugLog('webrtc:datachannel-open', channel.label);
     setStatus('connected');
   };
 
   channel.onclose = () => {
+    debugLog('webrtc:datachannel-close', channel.label);
     setStatus('disconnected');
     setMessage('Data channel closed. Leave and reconnect.');
   };
@@ -573,6 +635,7 @@ window.addEventListener('keyup', (event) => {
 });
 
 createRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:create-room-click');
   if (roomCode || pendingRoomCode) {
     disconnectLocal(false);
   }
@@ -589,7 +652,8 @@ createRoomBtn.addEventListener('click', async () => {
 
   try {
     await waitForSocketOpen();
-    socket.send(JSON.stringify({ type: 'create_room', roomCode: code }));
+    pendingSignalAction = { type: 'create_room', roomCode: code };
+    socket.send(JSON.stringify(pendingSignalAction));
   } catch (error) {
     setStatus('disconnected');
     setMessage(error instanceof Error ? `${error.message}. Room code generated locally but not registered yet.` : 'Unable to connect to signaling. Room code generated locally but not registered yet.');
@@ -597,6 +661,7 @@ createRoomBtn.addEventListener('click', async () => {
 });
 
 joinRoomBtn.addEventListener('click', async () => {
+  debugLog('ui:join-room-click');
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     setMessage('Enter a room code first.');
@@ -613,7 +678,8 @@ joinRoomBtn.addEventListener('click', async () => {
 
   try {
     await waitForSocketOpen();
-    socket.send(JSON.stringify({ type: 'join_room', roomCode: code }));
+    pendingSignalAction = { type: 'join_room', roomCode: code };
+    socket.send(JSON.stringify(pendingSignalAction));
   } catch (error) {
     roomCode = null;
     updateRoomLabel();
@@ -624,6 +690,7 @@ joinRoomBtn.addEventListener('click', async () => {
 });
 
 leaveRoomBtn.addEventListener('click', () => {
+  debugLog('ui:leave-room-click');
   disconnectLocal(false);
 });
 
@@ -637,11 +704,39 @@ copyCodeBtn.addEventListener('click', async () => {
     await navigator.clipboard.writeText(code);
     setMessage(`Room code ${code} copied.`);
   } catch {
-    setMessage('Clipboard unavailable. Copy the room code manually.');
+    const fallback = document.createElement('textarea');
+    fallback.value = code;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.left = '-9999px';
+    document.body.appendChild(fallback);
+    fallback.select();
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(fallback);
+    if (copied) {
+      setMessage(`Room code ${code} copied.`);
+      return;
+    }
+
+    setMessage(`Clipboard unavailable. Room code: ${code}`);
   }
 });
 
 setStatus('disconnected');
 updateControlState();
 updateRoomLabel();
+setSignalLog('idle');
+if (DEBUG_MODE && debugPanelEl) {
+  debugPanelEl.classList.remove('hidden');
+  debugLog('debug-mode', 'enabled via ?debug=1');
+  debugLog('signaling-candidates', SIGNALING_URLS);
+}
+window.addEventListener('error', (event) => {
+  debugLog('window:error', event.message || 'unknown');
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  debugLog('window:unhandledrejection', reason);
+});
 requestAnimationFrame(tick);
