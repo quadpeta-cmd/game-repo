@@ -6,6 +6,7 @@ import {
   initialEnemyShotCooldownRange,
   isLevel4SideSpawnAllowed,
   level3SpawnShotCooldown,
+  maxEnemyPelletsForLevel,
   nextLevel,
   shouldRestartFromHp,
   speedBoostForLevel,
@@ -54,6 +55,11 @@ test('level 3 enemies cannot fire outside top band', () => {
 test('level 3 cooldown reset range is short enough for top-band firing', () => {
   const cooldown = level3SpawnShotCooldown();
   assert.deepEqual(cooldown, { min: 6, max: 22 });
+});
+
+test('level 3 pellet cap is one-fifth of normal', () => {
+  assert.equal(maxEnemyPelletsForLevel(3, 18), 3);
+  assert.equal(maxEnemyPelletsForLevel(2, 18), 18);
 });
 
 test('level 4 side spawns are allowed only from top or top corners', () => {
