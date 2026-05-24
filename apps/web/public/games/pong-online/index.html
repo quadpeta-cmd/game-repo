@@ -6,8 +6,8 @@
     <title>Pong Online</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body style="margin: 0; background: #0f172a; color: #e2e8f0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-    <main style="max-width: 900px; margin: 0 auto; padding: 16px;">
+  <body class="pong-online-body">
+    <main class="pong-online-main">
       <h1>Pong Online</h1>
       <p class="subtitle">Create a room on one computer, join from another.</p>
       <section class="controls">
@@ -29,6 +29,14 @@
           <strong id="status">disconnected</strong>
           <span id="role">-</span>
         </div>
+        <div class="row">
+          <span>Signal log:</span>
+          <code id="signal-log">-</code>
+        </div>
+        <div class="row">
+          <span>Pattern:</span>
+          <select id="pattern-select"></select>
+        </div>
         <p class="hint">Controls: W/S or ↑/↓</p>
       </section>
       <canvas
@@ -39,7 +47,11 @@
         style="width: 100%; max-width: 800px; height: auto; border: 1px solid #334155; background: #020617; display: block;"
       ></canvas>
       <p id="message">Disconnected. Create or join a room.</p>
+      <section id="debug-panel" class="debug-panel hidden" aria-live="polite">
+        <h2>Debug output</h2>
+        <pre id="debug-log"></pre>
+      </section>
     </main>
-    <script src="./main.js"></script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>
