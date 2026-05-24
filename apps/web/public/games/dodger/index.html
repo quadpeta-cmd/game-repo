@@ -34,8 +34,10 @@
   <body>
     <canvas id="game" width="800" height="480"></canvas>
     <p>Use ← and → to dodge. Survive 40s per level. 3 pellet hits = defeat.</p>
-    <script type="module">
-      import { initialEnemyShotCooldownRange } from './game-logic.mjs';
+    <script>
+      function initialEnemyShotCooldownRange(level) {
+        return level >= 3 ? { min: 6, max: 22 } : { min: 50, max: 130 };
+      }
 
       const canvas = document.getElementById('game');
       const ctx = canvas.getContext('2d');

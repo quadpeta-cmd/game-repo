@@ -28,6 +28,8 @@ function run() {
     'canvas id="game"',
     'function loop(',
     'LEVEL_SECONDS',
+    '<script>',
+    'function initialEnemyShotCooldownRange(level)',
   ]);
 
   checkHtmlContains('apps/web/public/games/pong-online/index.html', [
