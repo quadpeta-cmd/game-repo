@@ -39,6 +39,24 @@ function encodeFrame(payload) {
   return Buffer.concat([header, data]);
 }
 
+function encodeCloseFrame(code = 1000, reason = '') {
+  const reasonBytes = Buffer.from(reason, 'utf8');
+  const payload = Buffer.alloc(2 + reasonBytes.length);
+  payload.writeUInt16BE(code, 0);
+  reasonBytes.copy(payload, 2);
+
+  const len = payload.length;
+  if (len < 126) {
+    return Buffer.concat([Buffer.from([0x88, len]), payload]);
+  }
+
+  const header = Buffer.alloc(4);
+  header[0] = 0x88;
+  header[1] = 126;
+  header.writeUInt16BE(len, 2);
+  return Buffer.concat([header, payload]);
+}
+
 function parseFrames(buffer) {
   const frames = [];
   let offset = 0;
@@ -253,6 +271,7 @@ server.on('upgrade', (req, socket) => {
         if (frame.close) {
           log('socket_close_frame', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
           leave(socket);
+          socket.write(encodeCloseFrame(1000, 'Normal closure'));
           socket.end();
           return;
         }
@@ -266,10 +285,16 @@ server.on('upgrade', (req, socket) => {
           onMessage(socket, frame.text);
         }
       }
-    } catch {
-      log('socket_parse_error', { clientId: socket.clientId, roomCode: socket.roomCode, role: socket.role });
+    } catch (error) {
+      log('socket_parse_error', {
+        clientId: socket.clientId,
+        roomCode: socket.roomCode,
+        role: socket.role,
+        message: error instanceof Error ? error.message : 'unknown parse error',
+      });
       leave(socket);
-      socket.destroy();
+      socket.write(encodeCloseFrame(1002, 'Protocol error'));
+      socket.end();
     }
   });
 
