@@ -117,6 +117,38 @@ const PATTERN_PALETTES = [
 ];
 const FRUITS = ['🍎', '🍊', '🍌', '🍉', '🍓', '🍍', '🍇', '🍐'];
 
+function patternByColor(hex) {
+  const normalized = String(hex || '').toLowerCase();
+  return PATTERN_PALETTES.find((palette) => palette.colors.some((c) => c.toLowerCase() === normalized)) || PATTERN_PALETTES[0];
+}
+
+function makePaddlePattern(baseColor) {
+  const palette = patternByColor(baseColor);
+  const tile = document.createElement('canvas');
+  tile.width = 24;
+  tile.height = 24;
+  const pctx = tile.getContext('2d');
+  pctx.fillStyle = palette.colors[0];
+  pctx.fillRect(0, 0, 24, 24);
+  pctx.fillStyle = palette.colors[1] || '#ffffff';
+  pctx.fillRect(0, 0, 12, 12);
+  pctx.fillRect(12, 12, 12, 12);
+  pctx.strokeStyle = palette.colors[2] || 'rgba(255,255,255,0.65)';
+  pctx.lineWidth = 3;
+  pctx.beginPath();
+  pctx.moveTo(0, 24);
+  pctx.lineTo(24, 0);
+  pctx.stroke();
+  pctx.fillStyle = palette.colors[3] || 'rgba(255,255,255,0.45)';
+  pctx.beginPath();
+  pctx.arc(6, 18, 3, 0, Math.PI * 2);
+  pctx.fill();
+  pctx.beginPath();
+  pctx.arc(18, 6, 3, 0, Math.PI * 2);
+  pctx.fill();
+  return ctx.createPattern(tile, 'repeat') || (baseColor || '#e2e8f0');
+}
+
 canvas.addEventListener('pointerdown', () => {
   canvas.focus();
 });
@@ -645,8 +677,8 @@ function spawnPowerItem(kind) {
     targetSide,
     x: GAME_WIDTH / 2,
     y: 40 + Math.random() * (GAME_HEIGHT - 80),
-    vx: kind === 'powerDown' ? (targetSide === 'left' ? -140 : 140) : 0,
-    vy: (Math.random() * 2 - 1) * 100,
+    vx: targetSide === 'left' ? -150 : 150,
+    vy: (Math.random() * 2 - 1) * 55,
     radius: POWER_ITEM_SIZE,
   });
 }
@@ -773,18 +805,8 @@ function draw() {
   const rightScale = renderState.paddleScale?.right ?? 1;
   const leftPadHeight = PADDLE_HEIGHT * leftScale * (hasEffect(renderState.effects.left || {}, 'bigger') ? 1.4 : hasEffect(renderState.effects.left || {}, 'smaller') ? 0.65 : 1);
   const rightPadHeight = PADDLE_HEIGHT * rightScale * (hasEffect(renderState.effects.right || {}, 'bigger') ? 1.4 : hasEffect(renderState.effects.right || {}, 'smaller') ? 0.65 : 1);
-  const leftPatternCanvas = document.createElement('canvas');
-  leftPatternCanvas.width = 24; leftPatternCanvas.height = 24;
-  const leftPctx = leftPatternCanvas.getContext('2d');
-  leftPctx.fillStyle = renderState.patterns.left || '#e2e8f0'; leftPctx.fillRect(0, 0, 24, 24);
-  leftPctx.strokeStyle = 'rgba(255,255,255,0.45)'; leftPctx.lineWidth = 3; leftPctx.beginPath(); leftPctx.moveTo(0, 24); leftPctx.lineTo(24, 0); leftPctx.stroke();
-  const rightPatternCanvas = document.createElement('canvas');
-  rightPatternCanvas.width = 24; rightPatternCanvas.height = 24;
-  const rightPctx = rightPatternCanvas.getContext('2d');
-  rightPctx.fillStyle = renderState.patterns.right || '#e2e8f0'; rightPctx.fillRect(0, 0, 24, 24);
-  rightPctx.fillStyle = 'rgba(255,255,255,0.35)'; rightPctx.beginPath(); rightPctx.arc(7, 7, 3, 0, Math.PI * 2); rightPctx.fill(); rightPctx.beginPath(); rightPctx.arc(17, 17, 3, 0, Math.PI * 2); rightPctx.fill();
-  const leftPattern = ctx.createPattern(leftPatternCanvas, 'repeat');
-  const rightPattern = ctx.createPattern(rightPatternCanvas, 'repeat');
+  const leftPattern = makePaddlePattern(renderState.patterns.left || '#e2e8f0');
+  const rightPattern = makePaddlePattern(renderState.patterns.right || '#e2e8f0');
   ctx.fillStyle = leftPattern || (renderState.patterns.left || '#e2e8f0');
   ctx.fillRect(20, renderState.leftY - leftPadHeight / 2, 12, leftPadHeight);
   if (hasEffect(renderState.effects.left || {}, 'gaps')) {
@@ -804,7 +826,16 @@ function draw() {
     ctx.fillRect(GAME_WIDTH - 46, renderState.rightY + 6, 6, 10);
   }
 
+  const ballRadius = 16;
+  ctx.beginPath();
+  ctx.arc(renderState.ballX, renderState.ballY, ballRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#f59e0b';
+  ctx.stroke();
   ctx.font = '20px serif';
+  ctx.fillStyle = '#0f172a';
   ctx.fillText(renderState.ballFruit || '🍎', renderState.ballX - 9, renderState.ballY + 7);
 
   ctx.font = 'bold 40px sans-serif';
@@ -812,9 +843,21 @@ function draw() {
   ctx.fillText(String(renderState.leftScore), GAME_WIDTH / 2 - 80, 48);
   ctx.fillText(String(renderState.rightScore), GAME_WIDTH / 2 + 52, 48);
   for (const item of renderState.powerItems || []) {
-    ctx.font = '20px serif';
     const iconMap = { bigger: '🛡️', faster: '⚡', minis: '✨', stretch: '🌀', wavy: '🌊', smaller: '🪶', gaps: '🧩', icy: '❄️' };
-    ctx.fillText(iconMap[item.type] || '⭐', item.x - 10, item.y + 7);
+    const fillColor = item.kind === 'powerUp' ? '#16a34a' : '#dc2626';
+    const label = item.kind === 'powerUp' ? '+' : '-';
+    ctx.beginPath();
+    ctx.arc(item.x, item.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, item.x - 3, item.y - 14);
+    ctx.font = '16px serif';
+    ctx.fillText(iconMap[item.type] || '⭐', item.x - 8, item.y + 6);
   }
   if (renderState.winner) {
     const winnerLabel = renderState.winner === 'left' ? 'LEFT PLAYER' : 'RIGHT PLAYER';
