@@ -12,11 +12,11 @@
   </head>
   <body>
     <canvas id="game" width="800" height="480"></canvas>
-    <p>Use ← and → to dodge. Survive 90s per level. 3 pellet hits = defeat.</p>
+    <p>Use ← and → to dodge. Survive 40s per level. 3 pellet hits = defeat.</p>
     <script>
       const canvas = document.getElementById('game');
       const ctx = canvas.getContext('2d');
-      const LEVEL_SECONDS = 90;
+      const LEVEL_SECONDS = 40;
       const player = { x: 380, y: 430, w: 44, h: 24, speed: 7, hp: 3 };
       const keys = { left: false, right: false };
       const enemies = [];
@@ -59,7 +59,7 @@
 
         if (level >= 2) {
           const medianBoost = progress * 2.4;
-          e.vy = rand(1.4 + medianBoost, 4.4 + medianBoost);
+          e.vy = rand(2.0 + medianBoost, 5.2 + medianBoost);
         }
         if (level >= 4 && Math.random() < 0.45) {
           const fromLeft = Math.random() < 0.5;
@@ -75,20 +75,20 @@
       function spawnPopcorn(shooter, aimed) {
         const cx = shooter.x + shooter.w / 2;
         const cy = shooter.y + shooter.h / 2;
-        let vx = rand(-1.2, 1.2), vy = rand(2.2, 3.8);
+        let vx = rand(-1.8, 1.8), vy = rand(2.8, 4.8);
         if (aimed) {
           const dx = (player.x + player.w / 2) - cx;
           const dy = (player.y + player.h / 2) - cy;
           const mag = Math.hypot(dx, dy) || 1;
-          vx = (dx / mag) * rand(2.0, 3.1);
-          vy = (dy / mag) * rand(2.0, 3.1);
+          vx = (dx / mag) * rand(2.8, 3.8);
+          vy = (dy / mag) * rand(2.8, 3.8);
         }
         pellets.push({ x: cx, y: cy, w: 8, h: 8, vx, vy, life: 240 });
       }
 
       function ensureBoss() {
         if (level !== 5 || boss) return;
-        boss = { x: canvas.width / 2 - 80, y: 28, w: 160, h: 88, vx: 2.2, fireCd: 28 };
+        boss = { x: canvas.width / 2 - 80, y: 28, w: 160, h: 88, vx: 3.4, fireCd: 18 };
       }
 
       function update(dt) {
@@ -101,7 +101,7 @@
         if (keys.right) player.x += player.speed;
         player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
-        const spawnRate = Math.max(8, 24 - level * 2);
+        const spawnRate = Math.max(5, 22 - level * 3);
         if (frame % spawnRate === 0) spawnEnemy();
         ensureBoss();
 
@@ -111,8 +111,8 @@
           if (level >= 3) {
             e.shotCd -= 1;
             if (e.shotCd <= 0) {
-              spawnPopcorn(e, Math.random() < 0.55);
-              e.shotCd = rand(40, 120);
+              spawnPopcorn(e, Math.random() < 0.7);
+              e.shotCd = rand(28, 85);
             }
           }
           if (intersects(player, e)) { alert('You got crushed! Restarting at level 1.'); resetRun(); return; }
@@ -123,9 +123,10 @@
           if (boss.x < 20 || boss.x + boss.w > canvas.width - 20) boss.vx *= -1;
           boss.fireCd -= 1;
           if (boss.fireCd <= 0) {
-            spawnPopcorn(boss, Math.random() < 0.75);
-            if (Math.random() < 0.4) spawnPopcorn(boss, false);
-            boss.fireCd = rand(12, 24);
+            spawnPopcorn(boss, Math.random() < 0.85);
+            if (Math.random() < 0.7) spawnPopcorn(boss, false);
+            if (Math.random() < 0.35) spawnPopcorn(boss, true);
+            boss.fireCd = rand(8, 16);
           }
           if (intersects(player, boss)) { alert('Hippo stomped you! Restarting at level 1.'); resetRun(); return; }
         }
