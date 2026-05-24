@@ -65,3 +65,7 @@ export function isMatchWinner(leftScore, rightScore, winScore = 8) {
   if (rightScore >= winScore) return 'right';
   return null;
 }
+
+export function shouldSuppressSocketCloseMessage({ suppressNextSocketCloseMessage, socketCloseCode }) {
+  return Boolean(suppressNextSocketCloseMessage && socketCloseCode === 1000);
+}
