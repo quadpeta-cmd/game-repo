@@ -13,3 +13,17 @@ export function nextLevel(currentLevel) {
 export function shouldRestartFromHp(hp) {
   return hp <= 0;
 }
+
+export function enemyCanFireInLevel3({ enemyY, canvasHeight, shotCooldown, pelletCount, maxEnemyPellets }) {
+  const inTopBand = enemyY < canvasHeight * 0.15;
+  const hasPelletCapacity = pelletCount < maxEnemyPellets;
+  return inTopBand && shotCooldown <= 0 && hasPelletCapacity;
+}
+
+export function level3SpawnShotCooldown() {
+  return { min: 6, max: 22 };
+}
+
+export function isLevel4SideSpawnAllowed(spawnY, canvasHeight) {
+  return spawnY <= 0 || spawnY < canvasHeight * 0.2;
+}

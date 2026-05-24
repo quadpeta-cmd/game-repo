@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVEL_SECONDS, nextLevel, shouldRestartFromHp, speedBoostForLevel } from './game-logic.mjs';
+import {
+  LEVEL_SECONDS,
+  enemyCanFireInLevel3,
+  isLevel4SideSpawnAllowed,
+  level3SpawnShotCooldown,
+  nextLevel,
+  shouldRestartFromHp,
+  speedBoostForLevel,
+} from './game-logic.mjs';
 
 test('speed boost is zero for level 1', () => {
   assert.equal(speedBoostForLevel(1, LEVEL_SECONDS / 2), 0);
@@ -20,4 +28,36 @@ test('next level wraps after level 5', () => {
 test('hp restart rule', () => {
   assert.equal(shouldRestartFromHp(0), true);
   assert.equal(shouldRestartFromHp(2), false);
+});
+
+test('level 3 enemies can fire when in top band and cooldown elapsed', () => {
+  assert.equal(enemyCanFireInLevel3({
+    enemyY: 20,
+    canvasHeight: 480,
+    shotCooldown: 0,
+    pelletCount: 3,
+    maxEnemyPellets: 18,
+  }), true);
+});
+
+test('level 3 enemies cannot fire outside top band', () => {
+  assert.equal(enemyCanFireInLevel3({
+    enemyY: 120,
+    canvasHeight: 480,
+    shotCooldown: -1,
+    pelletCount: 3,
+    maxEnemyPellets: 18,
+  }), false);
+});
+
+test('level 3 cooldown reset range is short enough for top-band firing', () => {
+  const cooldown = level3SpawnShotCooldown();
+  assert.deepEqual(cooldown, { min: 6, max: 22 });
+});
+
+test('level 4 side spawns are allowed only from top or top corners', () => {
+  assert.equal(isLevel4SideSpawnAllowed(-20, 480), true);
+  assert.equal(isLevel4SideSpawnAllowed(40, 480), true);
+  assert.equal(isLevel4SideSpawnAllowed(200, 480), false);
+  assert.equal(isLevel4SideSpawnAllowed(520, 480), false);
 });
