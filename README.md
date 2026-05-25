@@ -55,7 +55,7 @@ npm --prefix apps/web run test
 ```
 
 
-Run full game checks (logic + runtime smoke + hub click-through smoke):
+Run full game checks (logic + runtime smoke + hub click-through smoke + built hub artifact smoke):
 
 ```bash
 npm run test:games
@@ -65,6 +65,12 @@ Run only the hub Play click-through smoke test:
 
 ```bash
 npm run test:hub:play-smoke
+```
+
+Run the post-build hub artifact smoke test (verifies built Gold Miner entry exists and includes canvas/bootstrap):
+
+```bash
+npm run build && npm run test:hub:build-smoke
 ```
 
 Build the web app:
