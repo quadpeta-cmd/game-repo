@@ -1,0 +1,7 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>
+  <rect width='120' height='120' fill='#7b8791'/>
+  <polygon points='8,92 36,24 76,14 112,56 98,102 44,110' fill='#909ca7'/>
+  <g stroke='#5c6770' stroke-width='4' opacity='.8'>
+    <path d='M18 82 L38 34 L72 24'/><path d='M40 104 L56 72 L98 60'/><path d='M66 16 L86 54'/>
+  </g>
+</svg>

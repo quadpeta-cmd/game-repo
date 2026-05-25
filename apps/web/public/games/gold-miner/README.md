@@ -46,3 +46,13 @@ Runtime lifecycle overlays:
 - `ONLINE_WAITING`
 - `PLAYING`
 - `ONLINE_DISCONNECTED`
+
+## Visuals and audio
+
+The runtime now uses image-driven art in `assets/`:
+- `bg-midwest.svg` midwestern background scene
+- `miner.svg` miner character sprite
+- `claw.svg` claw sprite
+- `tex-ground.svg`, `tex-rock.svg`, `tex-gold.svg` repeating texture maps
+
+Audio now includes richer synthesized SFX for fire/dynamite plus level success/failure/shop transitions.
