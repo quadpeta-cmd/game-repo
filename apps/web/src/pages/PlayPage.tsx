@@ -210,10 +210,7 @@ export function PlayPage() {
     return <p>Loading game…</p>;
   }
 
-  const gameSrc = new URL(
-    `games/${gameId}/${manifest.entry}${location.search}`,
-    window.location.origin,
-  ).toString();
+  const gameSrc = `/games/${gameId}/${manifest.entry}${location.search}`;
 
   return (
     <section className="play-page">
