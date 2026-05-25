@@ -50,6 +50,24 @@ test('resolveSignalingUrl rewrites github.dev forwarded host to signaling port h
   assert.equal(value, 'wss://crispy-invention-7v4p6p4g9wqgf9gj-8787.app.github.dev');
 });
 
+test('resolveSignalingUrl preserves ws scheme for non-https page', () => {
+  const value = resolveSignalingUrl({
+    currentUrl: 'http://play.example.com/games/pong-online',
+    baseUri: 'https://fallback.example.com/app/',
+    override: null,
+  });
+  assert.equal(value, 'ws://play.example.com:8787');
+});
+
+test('resolveSignalingUrl keeps localhost fallback when baseUri has no hostname', () => {
+  const value = resolveSignalingUrl({
+    currentUrl: 'http://localhost/play/pong-online',
+    baseUri: 'http://',
+    override: null,
+  });
+  assert.equal(value, 'ws://localhost:8787');
+});
+
 test('generateRoomCode maps values into allowed alphabet', () => {
   const code = generateRoomCode(Uint32Array.from([0, 1, 2, 30, 31, 32]));
   assert.equal(code, 'ABC89A');
@@ -169,9 +187,17 @@ test('paddleScaleAfterPoint respects minimum', () => {
   assert.equal(paddleScaleAfterPoint(0.41, 0.05, 0.4), 0.4);
 });
 
+test('paddleScaleAfterPoint allows custom shrink step', () => {
+  assert.equal(paddleScaleAfterPoint(1, 0.1, 0.4), 0.9);
+});
+
 test('powerItemHitsPaddle detects collision', () => {
   assert.equal(powerItemHitsPaddle(20, 100, 26, 100, 80), true);
   assert.equal(powerItemHitsPaddle(200, 100, 26, 100, 80), false);
+});
+
+test('powerItemHitsPaddle is strict on x threshold boundary', () => {
+  assert.equal(powerItemHitsPaddle(42, 100, 26, 100, 80), false);
 });
 
 test('fruitForRound picks based on random value', () => {
@@ -179,4 +205,8 @@ test('fruitForRound picks based on random value', () => {
   assert.equal(fruitForRound(fruits, 0.0), '🍎');
   assert.equal(fruitForRound(fruits, 0.5), '🍊');
   assert.equal(fruitForRound(fruits, 0.9), '🍌');
+});
+
+test('fruitForRound returns null for empty list', () => {
+  assert.equal(fruitForRound([], 0.2), null);
 });
