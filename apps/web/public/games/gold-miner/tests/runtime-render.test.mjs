@@ -21,9 +21,36 @@ test('gold-miner main bootstraps and schedules first render frame', async () => 
 
   globalThis.performance = { now: () => 0 };
   globalThis.requestAnimationFrame = () => { rafScheduled = true; return 1; };
+  globalThis.Image = class MockImage {
+    constructor() {
+      this.complete = false;
+      this.src = '';
+    }
+
+    addEventListener() {}
+  };
+  class MockAudioContext {
+    constructor() {
+      this.currentTime = 0;
+      this.state = 'running';
+      this.destination = {};
+    }
+
+    createOscillator() {
+      return { type: 'sine', frequency: { setValueAtTime() {} }, connect() { return this; }, start() {}, stop() {} };
+    }
+
+    createGain() {
+      return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() { return this; } };
+    }
+
+    resume() { this.state = 'running'; }
+  }
   globalThis.window = {
     location: { search: '', protocol: 'http:', hostname: 'localhost', reload() {} },
     addEventListener() {},
+    AudioContext: MockAudioContext,
+    webkitAudioContext: MockAudioContext,
     __goldMinerTest: undefined,
   };
   globalThis.document = {
