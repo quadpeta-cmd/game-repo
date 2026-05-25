@@ -10,9 +10,10 @@
     "test:pong-online": "node --test apps/web/public/games/pong-online/game-logic.test.mjs",
     "test:dodger": "node --test apps/web/public/games/dodger/game-logic.test.mjs",
     "test:games:runtime": "node scripts/game-runtime-smoke.mjs",
-    "test:games": "npm run test:pong-solo && npm run test:pong-online && npm run test:dodger && npm run test:gold-miner && npm run test:games:runtime && npm run test:hub:play-smoke",
+    "test:games": "npm run test:pong-solo && npm run test:pong-online && npm run test:dodger && npm run test:gold-miner && npm run test:games:runtime && npm run test:hub:play-smoke && npm run test:hub:build-smoke",
     "test:gold-miner": "node --test apps/web/public/games/gold-miner/tests/*.test.mjs",
     "test:gold-miner:perf": "node --test apps/web/public/games/gold-miner/tests/perf.test.mjs",
-    "test:hub:play-smoke": "npm --prefix apps/web run test:hub:play-smoke"
+    "test:hub:play-smoke": "npm --prefix apps/web run test:hub:play-smoke",
+    "test:hub:build-smoke": "npm --prefix apps/web run test:hub:build-smoke"
   }
 }
