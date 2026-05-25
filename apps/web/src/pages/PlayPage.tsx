@@ -212,7 +212,7 @@ export function PlayPage() {
 
   const gameSrc = new URL(
     `games/${gameId}/${manifest.entry}${location.search}`,
-    `${window.location.origin}/`,
+    document.baseURI,
   ).toString();
 
   return (
