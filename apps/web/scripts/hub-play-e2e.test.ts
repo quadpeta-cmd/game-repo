@@ -62,8 +62,25 @@ test('gold miner loads in sandbox iframe without module/CORS runtime errors', as
 
     const page = await browser.newPage();
     const errors: string[] = [];
+    const assetResponses = new Map<string, number>();
+    const assetRequestFailures: string[] = [];
+
     page.on('console', (msg) => {
       if (msg.type() === 'error') errors.push(msg.text());
+    });
+
+    page.on('response', (response) => {
+      const url = response.url();
+      if (url.includes('/games/gold-miner/assets/')) {
+        assetResponses.set(url, response.status());
+      }
+    });
+
+    page.on('requestfailed', (request) => {
+      const url = request.url();
+      if (url.includes('/games/gold-miner/assets/')) {
+        assetRequestFailures.push(`${url} :: ${request.failure()?.errorText ?? 'unknown failure'}`);
+      }
     });
 
     await page.goto(`${BASE_URL}/play/gold-miner`, { waitUntil: 'domcontentloaded' });
@@ -72,6 +89,13 @@ test('gold miner loads in sandbox iframe without module/CORS runtime errors', as
     assert.ok(frame, 'expected game iframe content frame');
     await frame.waitForSelector('canvas#game');
     await page.waitForTimeout(1000);
+
+    assert.equal(assetRequestFailures.length, 0, `asset requests failed: ${assetRequestFailures.join('; ')}`);
+    assert.ok(assetResponses.size >= 6, `expected at least 6 gold-miner asset responses, got ${assetResponses.size}`);
+    for (const [url, status] of assetResponses.entries()) {
+      assert.ok(status >= 200 && status < 400, `asset response not ok: ${url} -> ${status}`);
+    }
+
 
     const blocked = errors.find((text) =>
       /CORS|ERR_FAILED|Unsafe attempt to load URL|blocked by CORS policy/i.test(text),
