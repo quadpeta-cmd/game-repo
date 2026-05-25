@@ -73,6 +73,38 @@ Run the post-build hub artifact smoke test (verifies built Gold Miner entry exis
 npm run build && npm run test:hub:build-smoke
 ```
 
+Run the real-browser iframe regression check (requires Playwright browsers):
+
+```bash
+npm run test:hub:e2e
+```
+
+If this fails with `Executable doesn't exist` for Chromium, install the browser binary first:
+
+```bash
+cd apps/web && npx playwright install chromium
+```
+
+If your environment blocks `https://cdn.playwright.dev` (for example `403 Domain forbidden`), use one of these approaches:
+
+- pre-bake Chromium in the CI/devcontainer image and point Playwright at it via `PLAYWRIGHT_BROWSERS_PATH`
+- allowlist Playwright CDN downloads for the build environment
+
+
+For locked-down environments where Playwright CDN downloads are blocked, run e2e in the pre-baked Playwright container (Chromium already installed):
+
+```bash
+npm run test:hub:e2e:docker
+```
+
+Docker prerequisites (required):
+- Docker CLI installed (`docker --version`)
+- Docker Compose v2 plugin available (`docker compose version`)
+- Docker daemon running (`docker info`)
+
+The script performs these checks and fails with actionable errors if any requirement is missing.
+
+This uses `mcr.microsoft.com/playwright:v1.54.0-jammy` and sets `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` inside the container.
 Build the web app:
 
 ```bash
