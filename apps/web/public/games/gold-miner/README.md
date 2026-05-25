@@ -34,3 +34,15 @@ When loaded, `window.__goldMinerTest` exposes deterministic helpers:
 - `npm run test:gold-miner`
 - `npm run test:games`
 - `npm run build`
+
+## Online mode (WebRTC)
+
+Gold Miner supports `?mode=online` using existing signaling message flow (`create_room`, `join_room`, `offer`, `answer`, `ice_candidate`, `heartbeat`, `leave`, `peer_left`) and gameplay packets over RTC data channel (`gm_*`).
+
+Example host: `/games/gold-miner/?mode=online&role=host`
+Example guest: `/games/gold-miner/?mode=online&role=guest&room=<ROOM_CODE>`
+
+Runtime lifecycle overlays:
+- `ONLINE_WAITING`
+- `PLAYING`
+- `ONLINE_DISCONNECTED`
