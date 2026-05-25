@@ -12,6 +12,28 @@ const forcedMode = routeName === 'gold-miner-coop' ? 'coop' : routeName === 'gol
 const modeParam = forcedMode || params.get('mode') || 'solo';
 const isOnlineMode = modeParam === 'online';
 
+const ASSET_PATH = './assets';
+const assets = {
+  bg: new Image(), miner: new Image(), claw: new Image(),
+  texGround: new Image(), texRock: new Image(), texGold: new Image()
+};
+assets.bg.src = `${ASSET_PATH}/bg-midwest.svg`;
+assets.miner.src = `${ASSET_PATH}/miner.svg`;
+assets.claw.src = `${ASSET_PATH}/claw.svg`;
+assets.texGround.src = `${ASSET_PATH}/tex-ground.svg`;
+assets.texRock.src = `${ASSET_PATH}/tex-rock.svg`;
+assets.texGold.src = `${ASSET_PATH}/tex-gold.svg`;
+
+let groundPattern = null;
+let rockPattern = null;
+let goldPattern = null;
+function refreshPatterns() {
+  if (assets.texGround.complete && !groundPattern) groundPattern = ctx.createPattern(assets.texGround, 'repeat');
+  if (assets.texRock.complete && !rockPattern) rockPattern = ctx.createPattern(assets.texRock, 'repeat');
+  if (assets.texGold.complete && !goldPattern) goldPattern = ctx.createPattern(assets.texGold, 'repeat');
+}
+[assets.texGround, assets.texRock, assets.texGold].forEach((img) => img.addEventListener('load', refreshPatterns));
+
 function baseConfig(seed = 123456) {
   if (modeParam === 'coop') return { mode: 'local-two-player', variant: 'coop', seed, level: 1, playerCount: 2 };
   if (modeParam === 'versus') return { mode: 'local-two-player', variant: 'versus', seed, level: 1, playerCount: 2 };
@@ -24,6 +46,7 @@ let paused = false;
 let queued = [];
 let accumulator = 0;
 let last = performance.now();
+let previousGameState = state.gameState;
 const FIXED_DT_MS = 1000 / 60;
 
 let onlineController = null;
@@ -72,8 +95,8 @@ function onlineOverlayText() {
 
 
 function queue(playerId, action, value) { queued.push({ tick: state.tick + 1, playerId, action, value });
-  if (action === 'fire') sfx(220, 0.06, 'square', 0.03);
-  if (action === 'dynamite') sfx(110, 0.2, 'sawtooth', 0.06);
+  if (action === 'fire') sfx(240, 0.08, 'square', 0.04);
+  if (action === 'dynamite') sfx(90, 0.22, 'sawtooth', 0.08);
 }
 
 function drawShop() {
@@ -87,14 +110,11 @@ function drawShop() {
 
 function draw(frame) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const sky = ctx.createLinearGradient(0, 0, 0, WORLD.mineTop);
-  sky.addColorStop(0, '#f59e0b');
-  sky.addColorStop(1, '#fbbf24');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, WORLD.width, WORLD.hudHeight);
-  const mine = ctx.createLinearGradient(0, WORLD.mineTop, 0, WORLD.height);
-  mine.addColorStop(0, '#1f2937');
-  mine.addColorStop(1, '#111827');
-  ctx.fillStyle = mine; ctx.fillRect(0, WORLD.mineTop, WORLD.width, WORLD.height - WORLD.mineTop);
+  refreshPatterns();
+  if (assets.bg.complete) ctx.drawImage(assets.bg, 0, 0, WORLD.width, WORLD.height);
+  else { ctx.fillStyle = '#9ad0f5'; ctx.fillRect(0,0,WORLD.width,WORLD.height); }
+  ctx.fillStyle = groundPattern || '#3f3123';
+  ctx.fillRect(0, WORLD.mineTop, WORLD.width, WORLD.height - WORLD.mineTop);
   for (let i = 0; i < 30; i += 1) {
     ctx.fillStyle = i % 3 === 0 ? 'rgba(253,224,71,0.15)' : 'rgba(156,163,175,0.12)';
     ctx.beginPath();
@@ -108,19 +128,24 @@ function draw(frame) {
 
   for (const o of frame.objects) {
     const isGold = o.type.startsWith('gold_');
-    const grad = ctx.createRadialGradient(o.x - o.radius * 0.3, o.y - o.radius * 0.4, 1, o.x, o.y, o.radius);
-    if (isGold) { grad.addColorStop(0, '#fde68a'); grad.addColorStop(1, '#ca8a04'); }
-    else { grad.addColorStop(0, '#d1d5db'); grad.addColorStop(1, '#6b7280'); }
-    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = isGold ? '#92400e' : '#374151'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = isGold ? (goldPattern || '#ca8a04') : (rockPattern || '#6b7280');
+    ctx.fillRect(o.x - o.radius, o.y - o.radius, o.radius * 2, o.radius * 2);
+    ctx.restore();
+    ctx.strokeStyle = isGold ? '#7c5a00' : '#374151'; ctx.lineWidth = 2; ctx.stroke();
   }
 
   frame.players.forEach((p, idx) => {
     const origin = state.playerCount === 1 ? WORLD.clawOrigin1P : idx === 0 ? WORLD.clawOriginP1 : WORLD.clawOriginP2;
     const tipX = origin.x + Math.sin(p.angle) * p.length; const tipY = origin.y + Math.cos(p.angle) * p.length;
-    ctx.strokeStyle = idx === 0 ? '#e5e7eb' : '#93c5fd';
+    ctx.strokeStyle = '#dadfe4';
     ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(tipX, tipY); ctx.stroke();
-    ctx.beginPath(); ctx.arc(tipX, tipY, 8, 0, Math.PI * 2); ctx.fillStyle = '#f3f4f6'; ctx.fill();
+    if (assets.claw.complete) ctx.drawImage(assets.claw, tipX - 12, tipY - 12, 24, 24);
+    else { ctx.beginPath(); ctx.arc(tipX, tipY, 8, 0, Math.PI * 2); ctx.fillStyle = '#f3f4f6'; ctx.fill(); }
+    const minerX = origin.x - 22;
+    const minerY = origin.y - 78;
+    if (assets.miner.complete) ctx.drawImage(assets.miner, minerX, minerY, 44, 52);
   });
 
   if (state.gameState === GAME_STATES.LEVEL_FAIL) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,WORLD.width,WORLD.height); ctx.fillStyle='#fff'; ctx.font='bold 40px system-ui'; ctx.fillText('Level Failed', 280,250); }
@@ -146,7 +171,15 @@ function frame(now) {
       queued = []; accumulator -= FIXED_DT_MS;
     }
   } else if (queued.length) { stepGame(state, queued, FIXED_DT_MS); queued = []; }
-  draw(getRenderableFrame(state)); requestAnimationFrame(frame);
+  const renderFrame = getRenderableFrame(state);
+  draw(renderFrame);
+  if (state.gameState !== previousGameState) {
+    if (state.gameState === GAME_STATES.LEVEL_SUCCESS) sfx(660, 0.12, 'triangle', 0.06);
+    if (state.gameState === GAME_STATES.LEVEL_FAIL) sfx(140, 0.18, 'sawtooth', 0.05);
+    if (state.gameState === GAME_STATES.SHOP) sfx(520, 0.08, 'sine', 0.03);
+    previousGameState = state.gameState;
+  }
+  requestAnimationFrame(frame);
 }
 
 window.addEventListener('keydown', (e) => {
