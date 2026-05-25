@@ -210,6 +210,11 @@ export function PlayPage() {
     return <p>Loading game…</p>;
   }
 
+  const gameSrc = new URL(
+    `games/${gameId}/${manifest.entry}${location.search}`,
+    `${window.location.origin}/`,
+  ).toString();
+
   return (
     <section className="play-page">
       <div className="play-page-header">
@@ -219,7 +224,7 @@ export function PlayPage() {
       <iframe
         ref={iframeRef}
         title={manifest.name}
-        src={`/games/${gameId}/${manifest.entry}${location.search}`}
+        src={gameSrc}
         sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         className="game-frame"
