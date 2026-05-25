@@ -219,7 +219,7 @@ export function PlayPage() {
       <iframe
         ref={iframeRef}
         title={manifest.name}
-        src={`/games/${manifest.id}/${manifest.entry}${location.search}`}
+        src={`/games/${gameId}/${manifest.entry}${location.search}`}
         sandbox="allow-scripts allow-pointer-lock"
         referrerPolicy="no-referrer"
         className="game-frame"
