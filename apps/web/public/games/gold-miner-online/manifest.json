@@ -1,0 +1,12 @@
+{
+  "id": "gold-miner-online",
+  "name": "Gold Miner Online",
+  "description": "Original 2-player online Gold Miner variant over WebRTC.",
+  "entry": "index.html",
+  "tags": ["arcade", "online", "multiplayer"],
+  "modes": ["online"],
+  "permissions": {
+    "network": true,
+    "multiplayer": true
+  }
+}

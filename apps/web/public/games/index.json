@@ -1,6 +1,8 @@
 [
   "dodger",
   "gold-miner",
+  "gold-miner-coop",
+  "gold-miner-online",
   "pong",
   "pong-online",
   "pong-solo"
