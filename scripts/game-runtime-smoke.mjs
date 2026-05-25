@@ -51,6 +51,12 @@ function run() {
   checkSyntax('apps/web/public/games/pong-online/main.js');
   checkSyntax('apps/web/public/games/pong-online/game-logic.mjs');
 
+  checkHtmlContains('apps/web/public/games/gold-miner/index.html', [
+    'canvas id="game"',
+    'script type="module" src="./main.js"',
+  ]);
+  checkSyntax('apps/web/public/games/gold-miner/main.js');
+
   console.log('PASS game runtime smoke checks');
 }
 

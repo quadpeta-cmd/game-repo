@@ -1,0 +1,11 @@
+{
+  "id": "gold-miner",
+  "name": "Gold Miner",
+  "description": "Deterministic Gold Miner-style arcade game.",
+  "entry": "index.html",
+  "tags": ["arcade", "singleplayer", "multiplayer"],
+  "modes": ["singleplayer", "local-multiplayer", "online"],
+  "controls": {
+    "keyboard": ["ArrowDown/Space: fire", "ArrowUp/D: dynamite", "P: pause", "R: restart"]
+  }
+}
