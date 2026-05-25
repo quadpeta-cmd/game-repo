@@ -11,7 +11,8 @@
     "prebuild": "node scripts/generate-games-index.mjs",
     "test": "node --test public/games/**/*.test.mjs",
     "test:hub:play-smoke": "tsx --tsconfig tsconfig.app.json --test scripts/hub-play-smoke.test.ts",
-    "test:hub:build-smoke": "tsx --tsconfig tsconfig.app.json --test scripts/hub-build-smoke.test.ts"
+    "test:hub:build-smoke": "tsx --tsconfig tsconfig.app.json --test scripts/hub-build-smoke.test.ts",
+    "test:hub:e2e": "tsx --tsconfig tsconfig.app.json --test scripts/hub-play-e2e.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -25,6 +26,7 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "tsx": "^4.19.2",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "playwright": "^1.54.0"
   }
 }

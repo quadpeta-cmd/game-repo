@@ -1,0 +1,10 @@
+services:
+  hub-e2e:
+    image: mcr.microsoft.com/playwright:v1.54.0-jammy
+    working_dir: /work/apps/web
+    volumes:
+      - ./:/work
+    environment:
+      - CI=1
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    command: sh -lc "npm install && npm run test:hub:e2e"

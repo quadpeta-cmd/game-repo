@@ -79,7 +79,7 @@ test('hub play click reaches Gold Miner iframe and references a renderable game 
     await flush();
   });
 
-  const iframe = document.querySelector('iframe.game-frame');
+  const iframe = await waitFor(() => document.querySelector('iframe.game-frame') as HTMLIFrameElement | null);
   assert.ok(iframe, 'Play page iframe should render after clicking Play');
   assert.equal(iframe.getAttribute('sandbox'), 'allow-scripts allow-pointer-lock');
   assert.equal(iframe.getAttribute('referrerpolicy'), 'no-referrer');
@@ -90,7 +90,7 @@ test('hub play click reaches Gold Miner iframe and references a renderable game 
   const srcPath = src.split('?')[0].replace(/^\//, '');
   const gameEntryHtml = await readFile(join(PUBLIC_DIR, srcPath), 'utf8');
   assert.match(gameEntryHtml, /<canvas[^>]*id="game"/i, 'Gold Miner entry should include a game canvas');
-  assert.match(gameEntryHtml, /<script[^>]*type="module"[^>]*src="\.\/main\.js"/i, 'Gold Miner entry should load the game runtime module');
+  assert.match(gameEntryHtml, /<script[^>]*src="\.\/main\.bundle\.js"/i, 'Gold Miner entry should load the bundled game runtime');
 
   root.unmount();
 });

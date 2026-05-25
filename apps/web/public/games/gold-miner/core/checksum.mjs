@@ -1,4 +1,11 @@
-import { createHash } from 'node:crypto';
+function fnv1a(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i += 1) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
 
 export function checksumState(state) {
   const compact = {
@@ -13,5 +20,7 @@ export function checksumState(state) {
     players: state.players,
     objects: state.objects.map(({ id, type, x, y, claimedBy }) => ({ id, type, x, y, claimedBy }))
   };
-  return createHash('sha1').update(JSON.stringify(compact)).digest('hex').slice(0, 12);
+
+  const json = JSON.stringify(compact);
+  return fnv1a(json).toString(16).padStart(8, '0');
 }
