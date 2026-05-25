@@ -1,0 +1,1 @@
+export function createRng(seed = 1) { let s = (seed >>> 0) || 1; return { seed: () => s, next() { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; }, int(min, max) { return Math.floor(this.next() * (max - min + 1)) + min; }, pick(arr) { return arr[this.int(0, arr.length - 1)]; } }; }
