@@ -106,14 +106,22 @@ const POWER_DURATION = 20000;
 const POWER_ITEM_SIZE = 10;
 const PADDLE_SHRINK_STEP = 0.05;
 const MIN_PADDLE_SCALE = 0.4;
+const BALL_HIT_SPEED_MULTIPLIER = 1.005;
+const POWER_SPAWN_CHANCE_PER_SECOND = 0.018;
 
 const PATTERN_PALETTES = [
-  { name: '🌸 Bloom', colors: ['#f9a8d4', '#f472b6', '#fb7185', '#fef08a'] },
-  { name: '🌺 Sunset Petals', colors: ['#f97316', '#fb7185', '#f43f5e', '#fde68a'] },
-  { name: '🌼 Daisy Pop', colors: ['#fef9c3', '#fde047', '#60a5fa', '#a3e635'] },
-  { name: '🌷 Lavender Garden', colors: ['#c4b5fd', '#a78bfa', '#22d3ee', '#f9a8d4'] },
-  { name: '🌿 Forest Fern', colors: ['#4ade80', '#22c55e', '#a3e635', '#bef264'] },
-  { name: '🌌 Aurora', colors: ['#38bdf8', '#22d3ee', '#a78bfa', '#34d399'] },
+  { name: '🎸 Neon Grid', colors: ['#0ea5e9', '#7c3aed', '#ec4899', '#f59e0b'] },
+  { name: '🏜️ Desert Heat', colors: ['#f97316', '#ea580c', '#facc15', '#fb7185'] },
+  { name: '🌌 Cosmic Pulse', colors: ['#312e81', '#4338ca', '#22d3ee', '#a78bfa'] },
+  { name: '🧊 Glacial Pop', colors: ['#bae6fd', '#38bdf8', '#0ea5e9', '#e0f2fe'] },
+  { name: '🌋 Magma Flow', colors: ['#7f1d1d', '#dc2626', '#f97316', '#fde68a'] },
+  { name: '🌊 Deep Sea', colors: ['#082f49', '#0c4a6e', '#0284c7', '#67e8f9'] },
+  { name: '🪩 Disco Night', colors: ['#111827', '#ec4899', '#22d3ee', '#facc15'] },
+  { name: '🌲 Forest Rune', colors: ['#14532d', '#16a34a', '#84cc16', '#d9f99d'] },
+  { name: '🛸 Retro Arcade', colors: ['#0f172a', '#a3e635', '#f43f5e', '#38bdf8'] },
+  { name: '☁️ Cotton Candy', colors: ['#fbcfe8', '#f9a8d4', '#c4b5fd', '#93c5fd'] },
+  { name: '🏴‍☠️ Midnight Gold', colors: ['#020617', '#334155', '#eab308', '#f8fafc'] },
+  { name: '🌈 Prism Dash', colors: ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6'] },
 ];
 const FRUITS = ['🍎', '🍊', '🍌', '🍉', '🍓', '🍍', '🍇', '🍐'];
 
@@ -172,6 +180,7 @@ const defaultState = () => ({
   patterns: { left: '#e2e8f0', right: '#e2e8f0' },
   paddleScale: { left: 1, right: 1 },
   ballFruit: FRUITS[Math.floor(Math.random() * FRUITS.length)],
+  activeNotices: [],
 });
 
 function nowMs() {
@@ -662,6 +671,23 @@ function paddleHeightForSide(side) {
 
 function applyEffect(side, type) {
   state.effects[side][type] = nowMs() + POWER_DURATION;
+  const effectNames = {
+    bigger: 'MEGA PADDLE',
+    faster: 'SPEED BOOST',
+    minis: 'MINI BUDDIES',
+    stretch: 'WARP DRIVE',
+    wavy: 'WAVY CONTROLS',
+    smaller: 'SHRINK RAY',
+    gaps: 'GLITCH GAPS',
+    icy: 'ICE DRIFT',
+  };
+  const sideLabel = side === 'left' ? 'LEFT' : 'RIGHT';
+  state.activeNotices.push({
+    text: `${sideLabel}: ${effectNames[type] || type.toUpperCase()}`,
+    color: ['bigger', 'faster', 'minis', 'stretch'].includes(type) ? '#22c55e' : '#ef4444',
+    life: 140,
+    y: 94 + Math.random() * 50,
+  });
 }
 
 function spawnPowerItem(kind) {
@@ -687,7 +713,7 @@ function simulateHost(dt) {
   if (state.winner) {
     return;
   }
-  if (Math.random() < dt * 0.18) {
+  if (Math.random() < dt * POWER_SPAWN_CHANCE_PER_SECOND) {
     spawnPowerItem(Math.random() > 0.5 ? 'powerUp' : 'powerDown');
   }
   const leftControl = hasEffect(state.effects.left, 'icy') && hostInputs.host === 0 ? lastIntent.host : hostInputs.host;
@@ -715,13 +741,15 @@ function simulateHost(dt) {
 
   const leftHit = state.ballX < 36 && Math.abs(state.ballY - state.leftY) <= paddleHeightForSide('left') / 2;
   if (leftHit && state.ballVX < 0) {
-    state.ballVX *= -1.04;
+    state.ballVX *= -BALL_HIT_SPEED_MULTIPLIER;
+    state.ballVY *= BALL_HIT_SPEED_MULTIPLIER;
     state.ballX = 36;
   }
 
   const rightHit = state.ballX > GAME_WIDTH - 36 && Math.abs(state.ballY - state.rightY) <= paddleHeightForSide('right') / 2;
   if (rightHit && state.ballVX > 0) {
-    state.ballVX *= -1.04;
+    state.ballVX *= -BALL_HIT_SPEED_MULTIPLIER;
+    state.ballVY *= BALL_HIT_SPEED_MULTIPLIER;
     state.ballX = GAME_WIDTH - 36;
   }
 
@@ -766,6 +794,9 @@ function simulateHost(dt) {
   });
 
   state.tick += 1;
+  state.activeNotices = (state.activeNotices || [])
+    .map((notice) => ({ ...notice, life: notice.life - 1, y: notice.y - 0.25 }))
+    .filter((notice) => notice.life > 0);
   renderState = { ...state };
 }
 
@@ -793,7 +824,29 @@ function updateGuestRender(dt) {
 
 function draw() {
   ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.fillStyle = '#020617';
+  const level = Math.min(5, 1 + Math.floor((renderState.leftScore + renderState.rightScore) / 3));
+  const levelBackgrounds = [
+    { sky: ['#020617', '#0f172a'], accents: ['rgba(56, 189, 248, 0.26)', 'rgba(147, 51, 234, 0.24)'] },
+    { sky: ['#082f49', '#0c4a6e'], accents: ['rgba(103, 232, 249, 0.3)', 'rgba(59, 130, 246, 0.28)'] },
+    { sky: ['#431407', '#7c2d12'], accents: ['rgba(251, 146, 60, 0.3)', 'rgba(244, 63, 94, 0.24)'] },
+    { sky: ['#14532d', '#052e16'], accents: ['rgba(74, 222, 128, 0.3)', 'rgba(190, 242, 100, 0.2)'] },
+    { sky: ['#312e81', '#111827'], accents: ['rgba(244, 114, 182, 0.25)', 'rgba(34, 211, 238, 0.25)'] },
+  ];
+  const background = levelBackgrounds[level - 1];
+  const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+  gradient.addColorStop(0, background.sky[0]);
+  gradient.addColorStop(1, background.sky[1]);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  const glowA = ctx.createRadialGradient(120, 80, 10, 120, 80, 180);
+  glowA.addColorStop(0, background.accents[0]);
+  glowA.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowA;
+  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  const glowB = ctx.createRadialGradient(GAME_WIDTH - 120, GAME_HEIGHT - 90, 12, GAME_WIDTH - 120, GAME_HEIGHT - 90, 200);
+  glowB.addColorStop(0, background.accents[1]);
+  glowB.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowB;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
   ctx.fillStyle = '#e2e8f0';
@@ -858,6 +911,13 @@ function draw() {
     ctx.fillText(label, item.x - 3, item.y - 14);
     ctx.font = '16px serif';
     ctx.fillText(iconMap[item.type] || '⭐', item.x - 8, item.y + 6);
+  }
+  for (const notice of renderState.activeNotices || []) {
+    ctx.fillStyle = notice.color;
+    ctx.globalAlpha = Math.max(0, notice.life / 120);
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(notice.text, GAME_WIDTH / 2 - 130, notice.y);
+    ctx.globalAlpha = 1;
   }
   if (renderState.winner) {
     const winnerLabel = renderState.winner === 'left' ? 'LEFT PLAYER' : 'RIGHT PLAYER';
