@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "predev": "node scripts/generate-games-index.mjs",
     "prebuild": "node scripts/generate-games-index.mjs",
-    "test": "node --test public/games/**/*.test.mjs"
+    "test": "node --test public/games/**/*.test.mjs",
+    "test:hub:play-smoke": "tsx --tsconfig tsconfig.app.json --test scripts/hub-play-smoke.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -21,6 +22,8 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "tsx": "^4.19.2",
+    "jsdom": "^26.1.0"
   }
 }

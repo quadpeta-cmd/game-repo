@@ -54,6 +54,19 @@ Run web game unit tests:
 npm --prefix apps/web run test
 ```
 
+
+Run full game checks (logic + runtime smoke + hub click-through smoke):
+
+```bash
+npm run test:games
+```
+
+Run only the hub Play click-through smoke test:
+
+```bash
+npm run test:hub:play-smoke
+```
+
 Build the web app:
 
 ```bash
