@@ -11,8 +11,10 @@ export type GameManifest = {
   };
 };
 
+const withBase = (path: string) => new URL(path, document.baseURI).toString();
+
 export async function loadGameIds(): Promise<string[]> {
-  const response = await fetch('/games/index.json');
+  const response = await fetch(withBase('games/index.json'));
 
   if (!response.ok) {
     throw new Error('Could not load games index');
@@ -28,7 +30,7 @@ export async function loadGameIds(): Promise<string[]> {
 }
 
 export async function loadManifest(gameId: string): Promise<GameManifest> {
-  const response = await fetch(`/games/${gameId}/manifest.json`);
+  const response = await fetch(withBase(`games/${gameId}/manifest.json`));
 
   if (!response.ok) {
     throw new Error(`Could not load manifest for ${gameId}`);
