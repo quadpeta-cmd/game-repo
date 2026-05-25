@@ -1,6 +1,7 @@
 import { createGame, stepGame, applyInput, getRenderableFrame, startNextLevel, buyShopItem, checksumState } from './core/simulation.mjs';
 import { GAME_STATES, WORLD } from './core/constants.mjs';
 import { runReplay } from './core/replay.mjs';
+import { createRuntimeOnlineController, enqueueLocalGameplayInput, handleIncomingGameplayPacket, hostStart, ONLINE_UI_STATES, safeDecodeGameplayPacket, tickRuntimeOnline } from './core/runtime-online.mjs';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -22,6 +23,34 @@ let queued = [];
 let accumulator = 0;
 let last = performance.now();
 const FIXED_DT_MS = 1000 / 60;
+
+let onlineController = null;
+let onlineRole = null;
+let onlineSocket = null;
+let onlinePc = null;
+let onlineDc = null;
+let onlineRoomCode = null;
+let onlinePendingCandidates = [];
+let onlineRemoteDescriptionSet = false;
+let onlineHeartbeat = null;
+const ONLINE_SIGNALING_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8787`;
+const ONLINE_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+function onlineSend(payload) {
+  if (onlineDc && onlineDc.readyState === 'open') onlineDc.send(payload);
+}
+
+function setOnlineDisconnected() {
+  paused = true;
+  if (state.gameState === GAME_STATES.PLAYING) state.gameState = GAME_STATES.ONLINE_DISCONNECTED;
+}
+
+function onlineOverlayText() {
+  if (!isOnlineMode) return null;
+  if (!onlineController) return 'ONLINE_WAITING';
+  return onlineController.uiState;
+}
+
 
 function queue(playerId, action, value) { queued.push({ tick: state.tick + 1, playerId, action, value }); }
 
@@ -54,7 +83,7 @@ function draw(frame) {
   });
 
   if (state.gameState === GAME_STATES.LEVEL_FAIL) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,WORLD.width,WORLD.height); ctx.fillStyle='#fff'; ctx.font='bold 40px system-ui'; ctx.fillText('Level Failed', 280,250); }
-  if (isOnlineMode && state.gameState === GAME_STATES.PLAYING) { ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(560,8,230,26); ctx.fillStyle='#fff'; ctx.font='14px monospace'; ctx.fillText('ONLINE_WAITING/PLAYING', 568,26); }
+  if (isOnlineMode) { const txt = onlineOverlayText(); if (txt) { ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(520,8,270,26); ctx.fillStyle='#fff'; ctx.font='14px monospace'; ctx.fillText(txt, 528,26);} }
   if (isOnlineMode && state.gameState === GAME_STATES.ONLINE_DISCONNECTED) { ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,WORLD.width,WORLD.height); ctx.fillStyle='#fff'; ctx.font='bold 32px system-ui'; ctx.fillText('ONLINE DISCONNECTED', 220, 250); }
   if (state.gameState === GAME_STATES.SHOP) drawShop();
   if (debug) { ctx.fillStyle = '#22c55e'; ctx.font = '14px monospace'; ctx.fillText(`tick:${state.tick} objs:${frame.objects.length} state:${state.gameState} mode:${state.variant}`, 10, WORLD.height - 12); }
@@ -64,7 +93,17 @@ function frame(now) {
   const elapsed = Math.min(100, now - last); last = now;
   if (!paused && state.gameState === GAME_STATES.PLAYING) {
     accumulator += elapsed;
-    while (accumulator >= FIXED_DT_MS) { stepGame(state, queued, FIXED_DT_MS); queued = []; accumulator -= FIXED_DT_MS; }
+    while (accumulator >= FIXED_DT_MS) {
+      if (isOnlineMode && onlineController) {
+        for (const q of queued) enqueueLocalGameplayInput(onlineController, q).forEach(onlineSend);
+        const packets = tickRuntimeOnline(onlineController, FIXED_DT_MS);
+        packets.forEach(onlineSend);
+        if (onlineController.session.game) state = onlineController.session.game;
+      } else {
+        stepGame(state, queued, FIXED_DT_MS);
+      }
+      queued = []; accumulator -= FIXED_DT_MS;
+    }
   } else if (queued.length) { stepGame(state, queued, FIXED_DT_MS); queued = []; }
   draw(getRenderableFrame(state)); requestAnimationFrame(frame);
 }
@@ -80,7 +119,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp') queue(2, 'dynamite');
   }
   if (e.key === 'p' || e.key === 'P') paused = !paused;
-  if (e.key === 'r' || e.key === 'R') state = createGame(baseConfig(state.seed));
+  if (e.key === 'r' || e.key === 'R') { state = createGame(baseConfig(state.seed)); if (isOnlineMode) window.location.reload(); }
   if (state.gameState === GAME_STATES.SHOP && e.key === 'Enter') startNextLevel(state);
   if (state.gameState === GAME_STATES.SHOP && /^[1-6]$/.test(e.key)) {
     const ids = Object.keys(state.shop.prices ?? {});
@@ -98,4 +137,67 @@ window.__goldMinerTest = {
   reset(config = {}) { state = createGame({ ...baseConfig(config.seed ?? state.seed), ...config }); }
 };
 
+
+async function initOnlineMode() {
+  if (!isOnlineMode) return;
+  onlineRole = params.get('role') === 'guest' ? 'guest' : 'host';
+  onlineController = createRuntimeOnlineController({ role: onlineRole, seed: state.seed });
+  const room = params.get('room') || '';
+  onlineRoomCode = room;
+  onlineSocket = new WebSocket(ONLINE_SIGNALING_URL);
+  onlineSocket.addEventListener('open', async () => {
+    onlineHeartbeat = setInterval(() => onlineSocket?.send(JSON.stringify({ type: 'heartbeat' })), 15000);
+    if (onlineRole === 'host') onlineSocket.send(JSON.stringify({ type: 'create_room', roomCode: room || `GM${Math.floor(Math.random()*10000)}` }));
+    else onlineSocket.send(JSON.stringify({ type: 'join_room', roomCode: room }));
+  });
+  onlineSocket.addEventListener('message', async (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'room_created') { onlineRoomCode = msg.roomCode; }
+    if (msg.type === 'room_joined') { onlineRoomCode = msg.roomCode; }
+    if (msg.type === 'peer_joined' && onlineRole === 'host') {
+      onlinePc = new RTCPeerConnection({ iceServers: ONLINE_ICE });
+      onlineDc = onlinePc.createDataChannel('gold-miner');
+      setupChannel();
+      setupPc();
+      const offer = await onlinePc.createOffer();
+      await onlinePc.setLocalDescription(offer);
+      onlineSocket.send(JSON.stringify({ type: 'offer', roomCode: onlineRoomCode, offer }));
+    }
+    if (msg.type === 'offer' && onlineRole === 'guest') {
+      onlinePc = new RTCPeerConnection({ iceServers: ONLINE_ICE });
+      setupPc();
+      onlinePc.ondatachannel = (e) => { onlineDc = e.channel; setupChannel(); };
+      await onlinePc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+      onlineRemoteDescriptionSet = true;
+      while (onlinePendingCandidates.length) await onlinePc.addIceCandidate(new RTCIceCandidate(onlinePendingCandidates.shift()));
+      const answer = await onlinePc.createAnswer();
+      await onlinePc.setLocalDescription(answer);
+      onlineSocket.send(JSON.stringify({ type: 'answer', roomCode: onlineRoomCode, answer }));
+    }
+    if (msg.type === 'answer' && onlinePc) { await onlinePc.setRemoteDescription(new RTCSessionDescription(msg.answer)); onlineRemoteDescriptionSet = true; }
+    if (msg.type === 'ice_candidate' && onlinePc) {
+      if (!onlineRemoteDescriptionSet) onlinePendingCandidates.push(msg.candidate);
+      else await onlinePc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    }
+    if (msg.type === 'peer_left') { handleIncomingGameplayPacket(onlineController, JSON.stringify({ type: 'gm_pause', reason: 'peer_left' })); setOnlineDisconnected(); }
+  });
+}
+
+function setupPc() {
+  onlinePc.onicecandidate = (event) => { if (event.candidate) onlineSocket.send(JSON.stringify({ type: 'ice_candidate', roomCode: onlineRoomCode, candidate: event.candidate })); };
+  onlinePc.onconnectionstatechange = () => { if (['failed','disconnected','closed'].includes(onlinePc.connectionState)) setOnlineDisconnected(); };
+}
+
+function setupChannel() {
+  onlineDc.onopen = () => { if (onlineRole === 'host') onlineSend(hostStart(onlineController)); };
+  onlineDc.onmessage = (event) => {
+    const probe = safeDecodeGameplayPacket(event.data);
+    if (!probe.ok) return;
+    handleIncomingGameplayPacket(onlineController, event.data);
+    if (onlineController.session.game) state = onlineController.session.game;
+  };
+  onlineDc.onclose = () => setOnlineDisconnected();
+}
+
+initOnlineMode();
 requestAnimationFrame(frame);
