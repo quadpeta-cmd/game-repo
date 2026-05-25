@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "predev": "node scripts/generate-games-index.mjs",
-    "prebuild": "node scripts/generate-games-index.mjs"
+    "prebuild": "node scripts/generate-games-index.mjs",
+    "test": "node --test public/games/**/*.test.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -48,6 +48,12 @@ Note: opening `http://localhost:5173/games/pong-online/index.html` loads the raw
 
 ## Build and preview
 
+Run web game unit tests:
+
+```bash
+npm --prefix apps/web run test
+```
+
 Build the web app:
 
 ```bash
