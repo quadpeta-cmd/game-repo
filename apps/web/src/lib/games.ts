@@ -11,7 +11,7 @@ export type GameManifest = {
   };
 };
 
-const withBase = (path: string) => new URL(path, document.baseURI).toString();
+const withBase = (path: string) => new URL(path, window.location.origin).toString();
 
 export async function loadGameIds(): Promise<string[]> {
   const response = await fetch(withBase('games/index.json'));
