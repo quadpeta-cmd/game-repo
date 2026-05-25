@@ -610,7 +610,8 @@ function setupDataChannel(channel) {
   channel.onclose = () => {
     debugLog('webrtc:datachannel-close', channel.label);
     setStatus('disconnected');
-    setMessage('Data channel closed. Leave and reconnect.');
+    disconnectLocal(false);
+    setMessage('Data channel closed. You left the room — reconnect with the room code.');
   };
 
   channel.onmessage = (event) => {
@@ -688,6 +689,13 @@ function applyEffect(side, type) {
     life: 140,
     y: 94 + Math.random() * 50,
   });
+}
+
+function powerItemHitsBall(item) {
+  const dx = item.x - state.ballX;
+  const dy = item.y - state.ballY;
+  const collisionRadius = item.radius + 8;
+  return (dx * dx) + (dy * dy) <= collisionRadius * collisionRadius;
 }
 
 function spawnPowerItem(kind) {
@@ -775,6 +783,10 @@ function simulateHost(dt) {
     const paddleY = item.targetSide === 'left' ? state.leftY : state.rightY;
     const paddleX = item.targetSide === 'left' ? 26 : GAME_WIDTH - 26;
     const paddleHeight = paddleHeightForSide(item.targetSide);
+    if (item.kind === 'powerUp' && powerItemHitsBall(item)) {
+      applyEffect(item.targetSide, item.type);
+      return false;
+    }
     if (item.kind === 'powerUp' && Math.abs(item.x - paddleX) < 16 && Math.abs(item.y - paddleY) < paddleHeight / 2) {
       applyEffect(item.targetSide, item.type);
       return false;
