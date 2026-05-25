@@ -251,3 +251,9 @@ Automate signaling protocol checks first (cheap, high value):
   - leave/peer_left behavior
 
 This will not prove full WebRTC success, but it quickly catches regressions in room lifecycle and signaling flow.
+
+## Gold Miner variants
+
+- Solo: `/play/gold-miner`
+- Local 2-player co-op: `/play/gold-miner-coop`
+- Online 2-player: `/play/gold-miner-online?role=host` and `/play/gold-miner-online?role=guest&room=<ROOM_CODE>`

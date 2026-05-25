@@ -1,0 +1,8 @@
+{
+  "id": "gold-miner-coop",
+  "name": "Gold Miner Co-op",
+  "description": "Original 2-player local Gold Miner variant with shared mine and richer audiovisual style.",
+  "entry": "index.html",
+  "tags": ["arcade", "local-multiplayer"],
+  "modes": ["local-multiplayer"]
+}

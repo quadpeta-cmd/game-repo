@@ -7,7 +7,9 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const params = new URLSearchParams(window.location.search);
 const debug = params.get('debug') === '1';
-const modeParam = params.get('mode') || 'solo';
+const routeName = window.location.pathname.split('/').filter(Boolean).at(-2) || '';
+const forcedMode = routeName === 'gold-miner-coop' ? 'coop' : routeName === 'gold-miner-online' ? 'online' : null;
+const modeParam = forcedMode || params.get('mode') || 'solo';
 const isOnlineMode = modeParam === 'online';
 
 function baseConfig(seed = 123456) {
@@ -36,6 +38,23 @@ let onlineHeartbeat = null;
 const ONLINE_SIGNALING_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8787`;
 const ONLINE_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function sfx(freq = 440, duration = 0.08, type = 'sine', gain = 0.04) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(gain, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(now); osc.stop(now + duration);
+}
+window.addEventListener('keydown', () => audioCtx?.state === 'suspended' && audioCtx.resume(), { once: true });
+
+
 function onlineSend(payload) {
   if (onlineDc && onlineDc.readyState === 'open') onlineDc.send(payload);
 }
@@ -52,7 +71,10 @@ function onlineOverlayText() {
 }
 
 
-function queue(playerId, action, value) { queued.push({ tick: state.tick + 1, playerId, action, value }); }
+function queue(playerId, action, value) { queued.push({ tick: state.tick + 1, playerId, action, value });
+  if (action === 'fire') sfx(220, 0.06, 'square', 0.03);
+  if (action === 'dynamite') sfx(110, 0.2, 'sawtooth', 0.06);
+}
 
 function drawShop() {
   ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, WORLD.width, WORLD.height);
@@ -65,14 +87,33 @@ function drawShop() {
 
 function draw(frame) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#f59e0b'; ctx.fillRect(0, 0, WORLD.width, WORLD.hudHeight);
-  ctx.fillStyle = '#1f2937'; ctx.fillRect(0, WORLD.mineTop, WORLD.width, WORLD.height - WORLD.mineTop);
+  const sky = ctx.createLinearGradient(0, 0, 0, WORLD.mineTop);
+  sky.addColorStop(0, '#f59e0b');
+  sky.addColorStop(1, '#fbbf24');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, WORLD.width, WORLD.hudHeight);
+  const mine = ctx.createLinearGradient(0, WORLD.mineTop, 0, WORLD.height);
+  mine.addColorStop(0, '#1f2937');
+  mine.addColorStop(1, '#111827');
+  ctx.fillStyle = mine; ctx.fillRect(0, WORLD.mineTop, WORLD.width, WORLD.height - WORLD.mineTop);
+  for (let i = 0; i < 30; i += 1) {
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(253,224,71,0.15)' : 'rgba(156,163,175,0.12)';
+    ctx.beginPath();
+    ctx.arc((i * 53) % WORLD.width, WORLD.mineTop + ((i * 97) % (WORLD.height - WORLD.mineTop)), 2 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.fillStyle = '#111827'; ctx.font = 'bold 20px system-ui';
   const scoreText = frame.scores ? `P1 $${frame.scores[1]} P2 $${frame.scores[2]}` : `$${state.score}`;
   ctx.fillText(scoreText, 16, 38);
   ctx.fillText(`Goal $${state.target}`, 260, 38); ctx.fillText(`Time ${Math.ceil(state.timeLeftMs / 1000)}`, 460, 38); ctx.fillText(`Lv ${state.level}`, 620, 38);
 
-  for (const o of frame.objects) { ctx.fillStyle = o.type.startsWith('gold_') ? '#facc15' : '#9ca3af'; ctx.beginPath(); ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2); ctx.fill(); }
+  for (const o of frame.objects) {
+    const isGold = o.type.startsWith('gold_');
+    const grad = ctx.createRadialGradient(o.x - o.radius * 0.3, o.y - o.radius * 0.4, 1, o.x, o.y, o.radius);
+    if (isGold) { grad.addColorStop(0, '#fde68a'); grad.addColorStop(1, '#ca8a04'); }
+    else { grad.addColorStop(0, '#d1d5db'); grad.addColorStop(1, '#6b7280'); }
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = isGold ? '#92400e' : '#374151'; ctx.lineWidth = 2; ctx.stroke();
+  }
 
   frame.players.forEach((p, idx) => {
     const origin = state.playerCount === 1 ? WORLD.clawOrigin1P : idx === 0 ? WORLD.clawOriginP1 : WORLD.clawOriginP2;
